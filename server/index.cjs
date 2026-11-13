@@ -1,22 +1,17 @@
 'use strict';
 const http=require('node:http'),fsp=require('node:fs/promises'),path=require('node:path');
-const {randomBytes,createHmac,createHash,timingSafeEqual}=require('node:crypto');
+const {randomBytes,createHash}=require('node:crypto');
 const P=require('../data.js'),payments=require('./payment.cjs'),pdf=require('./pdf.cjs');
-const orders=require('./orders.cjs');
+const tokens=require('./tokens.cjs');
 const {normalizeOrigin,requestIsAllowed}=require('./origin.cjs');
 const ROOT=path.resolve(__dirname,'..'),HOST=process.env.HOST||'127.0.0.1',PORT=Number(process.env.PORT)||4173;
 const ORIGIN=normalizeOrigin(process.env.APP_ORIGIN?.trim())||(process.env.VERCEL_URL?'https://'+process.env.VERCEL_URL:'http://'+HOST+':'+PORT);
-const SESSION_SECRET=process.env.SESSION_SECRET||randomBytes(32).toString('hex');
-const paymentsEnabled=process.env.PAYMENTS_ENABLED==='true'&&!!process.env.RAZORPAY_KEY_ID&&!!process.env.RAZORPAY_KEY_SECRET&&!!process.env.RAZORPAY_WEBHOOK_SECRET&&(process.env.SESSION_SECRET?.length>=32)&&orders.configured;
+const keyId=process.env.RAZORPAY_KEY_ID||'';
+const keyMode=keyId.startsWith('rzp_test_')?'test':keyId.startsWith('rzp_live_')?'live':null;
+// A live key needs an explicit second opt-in after a successful test-mode checkout.
+const paymentsEnabled=process.env.PAYMENTS_ENABLED==='true'&&!!keyMode&&!!process.env.RAZORPAY_KEY_SECRET&&tokens.configured()&&(keyMode==='test'||process.env.ALLOW_LIVE_PAYMENTS==='true');
 const rates=new Map();
 const fail=(message,status=400)=>Object.assign(Error(message),{status});
-function sign(value){return createHmac('sha256',SESSION_SECRET).update(value).digest('hex');}
-function session(req,res){
- const raw=(req.headers.cookie||'').split(';').map(x=>x.trim()).find(x=>x.startsWith('mpm_session='))?.slice(12);
- if(raw){const [id,sig]=raw.split('.');if(/^[a-f0-9]{48}$/.test(id||'')&&/^[a-f0-9]{64}$/.test(sig||'')&&timingSafeEqual(Buffer.from(sig,'hex'),Buffer.from(sign(id),'hex')))return id;}
- const id=randomBytes(24).toString('hex');
- res.setHeader('Set-Cookie','mpm_session='+id+'.'+sign(id)+'; Path=/; HttpOnly; SameSite=Strict; Max-Age=2592000'+(ORIGIN.startsWith('https:')?'; Secure':''));return id;
-}
 function json(res,status,value){res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(value));}
 function rate(req){
  const key=(process.env.VERCEL?req.headers['x-vercel-forwarded-for']:req.socket?.remoteAddress)||'unknown',now=Date.now();
@@ -34,17 +29,28 @@ function draftFrom(body){
  if(!Object.keys(P.sections).some(s=>P.entries(d,s).length))throw fail('आधी तुमची माहिती भरा.',422);
  return d;
 }
+function draftDigest(draft){return createHash('sha256').update(JSON.stringify(draft)).digest('hex');}
 function exportFormat(body){const format=body.format??'pdf';if(!['pdf','png'].includes(format))throw fail('PDF किंवा PNG प्रकार निवडा.');return format;}
 function sendDocument(res,result,format){res.writeHead(200,{'Content-Type':format==='png'?'image/png':'application/pdf','Content-Disposition':'attachment; filename="parichay-patrika.'+format+'"'});res.end(result);}
-async function owned(id,sid){
- const order=await orders.get(typeof id==='string'?id:'');
- if(!order||order.session!==sid)throw fail('ही ऑर्डर या ब्राउझरमध्ये उपलब्ध नाही.',403);
- return order;
+function paymentClaims(token,type){
+ const claims=tokens.verify(token,type);
+ const valid=typeof claims.orderId==='string'&&/^order_[A-Za-z0-9_]+$/.test(claims.orderId)&&claims.amount===payments.PRICE&&claims.currency===payments.CURRENCY&&typeof claims.draftDigest==='string'&&/^[a-f0-9]{64}$/.test(claims.draftDigest)&&(!claims.paymentId||typeof claims.paymentId==='string'&&/^pay_[A-Za-z0-9_]+$/.test(claims.paymentId));
+ if(!valid||type==='download'&&!claims.paymentId)throw fail(tokens.INVALID_TOKEN,403);
+ return claims;
 }
-async function verifyCaptured(order,paymentId){
+function issueDownloadToken(claims,payment){
+ return tokens.issue('download',{orderId:claims.orderId,paymentId:payment.id,draftDigest:claims.draftDigest,amount:payments.PRICE,currency:payments.CURRENCY});
+}
+async function capturedPaymentFor(claims,paymentId){
+ if(typeof paymentId!=='string'||!/^pay_[A-Za-z0-9_]+$/.test(paymentId))return null;
  const payment=await payments.razorpay('payments/'+encodeURIComponent(paymentId));
- if(!payments.capturedPayment(payment,order.id))throw fail('पेमेंट अद्याप पूर्णपणे प्राप्त झालेले नाही. थोड्या वेळाने स्थिती तपासा.',409);
- await orders.update(order.id,{status:'paid',payment_id:payment.id});return payment;
+ return payments.capturedPayment(payment,claims.orderId)?payment:null;
+}
+async function paymentStatus(claims){
+ const result=await payments.razorpay('orders/'+encodeURIComponent(claims.orderId)+'/payments');
+ const ids=[...new Set((Array.isArray(result.items)?result.items:[]).map(payment=>payment?.id).filter(id=>typeof id==='string'))].slice(0,25);
+ for(const id of ids){const payment=await capturedPaymentFor(claims,id);if(payment)return payment;}
+ return null;
 }
 const MIME={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.ttf':'font/ttf','.png':'image/png','.txt':'text/plain; charset=utf-8'};
 const publicFiles=new Set(['index.html','templates.html','builder.html','preview.html','download.html','privacy.html','styles.css','paper.css','app.js','data.js','renderer.js']);
@@ -55,53 +61,43 @@ async function handler(req,res){
   const url=new URL(req.url,ORIGIN);
   if(url.pathname.startsWith('/api/')){
    res.setHeader('Cache-Control','no-store');rate(req);
-   if(url.pathname==='/api/payment/webhook'&&req.method==='POST'){
-    const raw=await readBody(req);
-    if(!paymentsEnabled||!payments.webhookIsValid(raw,req.headers['x-razorpay-signature'],process.env.RAZORPAY_WEBHOOK_SECRET))throw fail('Invalid signature',403);
-    const event=JSON.parse(raw.toString('utf8')),entity=event.payload?.payment?.entity,order=entity?.order_id?await orders.get(entity.order_id):null;
-    if(order&&event.event==='payment.captured')await verifyCaptured(order,entity.id);
-    return json(res,200,{received:true});
-   }
-   const sid=session(req,res);
-   if(req.method==='GET'&&url.pathname==='/api/config')return json(res,200,{paymentsEnabled,keyId:paymentsEnabled?process.env.RAZORPAY_KEY_ID:null,amount:payments.PRICE,currency:payments.CURRENCY});
+   if(req.method==='GET'&&url.pathname==='/api/config')return json(res,200,{paymentsEnabled,keyId:paymentsEnabled?keyId:null,amount:payments.PRICE,currency:payments.CURRENCY});
    if(req.method!=='POST')throw fail('Not found',404);
    if(!requestIsAllowed(req,ORIGIN))throw fail('ही विनंती स्वीकारता येत नाही.',403);
    const raw=await readBody(req);let body;try{body=JSON.parse(raw.toString('utf8'));}catch{throw fail('योग्य माहिती पाठवा.');}
+   if(!body||typeof body!=='object'||Array.isArray(body))throw fail('योग्य माहिती पाठवा.');
    if(['/api/pdf/free','/api/export/free'].includes(url.pathname)){
     const format=exportFormat(body),result=await pdf.makePDF(draftFrom(body),true,format);
     return sendDocument(res,result,format);
    }
    if(!paymentsEnabled)throw fail('वॉटरमार्कशिवाय डाउनलोड सध्या उपलब्ध नाही.',503);
    if(url.pathname==='/api/payment/order'){
-    const d=draftFrom(body),snapshot=JSON.stringify(d),digest=createHash('sha256').update(snapshot).digest('hex');
+    const d=draftFrom(body),digest=draftDigest(d);
     await pdf.makePDF(d,true);
     const order=await payments.razorpay('orders','POST',{amount:payments.PRICE,currency:payments.CURRENCY,receipt:randomBytes(16).toString('hex'),notes:{draft_digest:digest},partial_payment:false});
     if(!order.id||order.amount!==payments.PRICE||order.currency!==payments.CURRENCY)throw fail('ऑर्डर तयार झाली नाही.',502);
-    await orders.set({id:order.id,session:sid,snapshot,digest,status:'created',created:Date.now()});
-    return json(res,200,{id:order.id,amount:order.amount,currency:order.currency});
+    const orderToken=tokens.issue('order',{orderId:order.id,draftDigest:digest,amount:payments.PRICE,currency:payments.CURRENCY});
+    return json(res,200,{id:order.id,amount:order.amount,currency:order.currency,orderToken});
    }
    if(url.pathname==='/api/payment/verify'){
-    const order=await owned(body.razorpay_order_id,sid);
-    if(!payments.signatureIsValid(order.id,body.razorpay_payment_id,body.razorpay_signature,process.env.RAZORPAY_KEY_SECRET))throw fail('पेमेंटची पडताळणी झाली नाही.',403);
-    await verifyCaptured(order,body.razorpay_payment_id);return json(res,200,{paid:true});
+    const claims=paymentClaims(body.orderToken,'order');
+    if(body.razorpay_order_id!==claims.orderId||!payments.signatureIsValid(claims.orderId,body.razorpay_payment_id,body.razorpay_signature,process.env.RAZORPAY_KEY_SECRET))throw fail('पेमेंटची पडताळणी झाली नाही.',403);
+    const payment=await capturedPaymentFor(claims,body.razorpay_payment_id);
+    if(!payment)throw fail('पेमेंट अद्याप पूर्णपणे प्राप्त झालेले नाही. थोड्या वेळाने स्थिती तपासा.',409);
+    return json(res,200,{paid:true,downloadToken:issueDownloadToken(claims,payment)});
    }
    if(url.pathname==='/api/payment/status'){
-    const order=await owned(body.orderId,sid);
-    const matchesDraft=body.draft?order.digest===createHash('sha256').update(JSON.stringify(P.normalize(body.draft))).digest('hex'):true;
-    if(order.payment_id){try{await verifyCaptured(order,order.payment_id);return json(res,200,{paid:true,matchesDraft});}catch(error){if(error.status!==409)throw error;return json(res,200,{paid:false,matchesDraft});}}
-    const result=await payments.razorpay('orders/'+encodeURIComponent(order.id)+'/payments');
-    const payment=result.items?.find(p=>payments.capturedPayment(p,order.id));
-    if(payment){await verifyCaptured(order,payment.id);return json(res,200,{paid:true,matchesDraft});}
-    return json(res,200,{paid:false,matchesDraft});
+    const claims=paymentClaims(body.orderToken,'order');
+    const matchesDraft=body.draft?draftDigest(draftFrom(body))===claims.draftDigest:false;
+    const payment=await paymentStatus(claims);
+    return json(res,200,payment?{paid:true,matchesDraft,downloadToken:issueDownloadToken(claims,payment)}:{paid:false,matchesDraft});
    }
    if(['/api/pdf/paid','/api/export/paid'].includes(url.pathname)){
-    const format=exportFormat(body);
-    const order=await owned(body.orderId,sid);
-    if(order.status!=='paid'||!order.payment_id)throw fail('पेमेंटची पडताळणी आवश्यक आहे.',403);
-    await verifyCaptured(order,order.payment_id);
-    // Render only the stored snapshot, never a client-provided clean flag or replacement draft.
-    const result=await pdf.makePDF(JSON.parse(order.snapshot),false,format);
-    return sendDocument(res,result,format);
+    const format=exportFormat(body),claims=paymentClaims(body.downloadToken,'download'),draft=draftFrom(body);
+    if(draftDigest(draft)!==claims.draftDigest)throw fail('ही स्वच्छ प्रत याच पत्रिकेसाठी उपलब्ध आहे.',403);
+    const payment=await capturedPaymentFor(claims,claims.paymentId);
+    if(!payment)throw fail('पेमेंटची पडताळणी आवश्यक आहे.',409);
+    return sendDocument(res,await pdf.makePDF(draft,false,format),format);
    }
    throw fail('Not found',404);
   }
@@ -126,4 +122,4 @@ if(require.main===module&&!process.env.VERCEL){
  async function shutdown(){server.closeAllConnections();server.close();await pdf.close();}
  process.on('SIGINT',shutdown);process.on('SIGTERM',shutdown);
 }
-module.exports={handler,server,database:{close(){}}};
+module.exports={handler,server};

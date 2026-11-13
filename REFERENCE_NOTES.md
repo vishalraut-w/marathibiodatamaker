@@ -17,7 +17,7 @@ The supplied image guides our paper layout: top/bottom decorative strips, white 
 3. Sequential combined builder, custom fields, ordering, hidden fields, dropdown/custom choices, uploads and draft backups.
 4. Shared fixed-A4 renderer, responsive scaling, adaptive font/row spacing and explicit overflow warnings.
 5. Real server PDF rendering with enforced watermark for the free route.
-6. Signed-session order ownership, server-fixed amount, signature/capture checks, immutable paid snapshot and signed webhook/recovery.
+6. Short-lived signed order/download tokens, server-fixed amount, signature/capture checks, and draft-hash-bound clean exports without a database or webhook.
 7. Fifteen original transparent deity PNGs with dropdown, visual gallery and upload-last option.
 8. Automated browser/payment tests and visual inspection of a rasterized PDF.
 

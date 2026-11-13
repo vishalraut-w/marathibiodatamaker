@@ -2,16 +2,12 @@
 const {createHmac,timingSafeEqual}=require('node:crypto');
 const PRICE=4900,CURRENCY='INR';
 function signatureIsValid(orderId,paymentId,signature,secret){
- if(!/^[a-f0-9]{64}$/i.test(signature||''))return false;
+ if(!secret||!/^[a-f0-9]{64}$/i.test(signature||''))return false;
  const expected=createHmac('sha256',secret).update(orderId+'|'+paymentId).digest();
  return timingSafeEqual(expected,Buffer.from(signature,'hex'));
 }
 function capturedPayment(payment,orderId){
- return payment?.order_id===orderId&&payment.status==='captured'&&payment.captured===true&&payment.amount===PRICE&&payment.currency===CURRENCY&&!payment.amount_refunded;
-}
-function webhookIsValid(raw,signature,secret){
- if(!secret||!/^[a-f0-9]{64}$/i.test(signature||''))return false;
- return timingSafeEqual(createHmac('sha256',secret).update(raw).digest(),Buffer.from(signature,'hex'));
+ return payment?.order_id===orderId&&payment.status==='captured'&&payment.captured===true&&payment.amount===PRICE&&payment.currency===CURRENCY&&Number(payment.amount_refunded||0)===0;
 }
 function createGateway(client){
  return async function(path,method='GET',body){
@@ -41,4 +37,4 @@ async function razorpay(path,method='GET',body){
  }
  return gateway(path,method,body);
 }
-module.exports={PRICE,CURRENCY,signatureIsValid,capturedPayment,webhookIsValid,razorpay,createGateway};
+module.exports={PRICE,CURRENCY,signatureIsValid,capturedPayment,razorpay,createGateway};

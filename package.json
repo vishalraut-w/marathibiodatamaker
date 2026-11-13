@@ -5,7 +5,7 @@
   "description": "Marathi biodata builder with server-verified PDF downloads",
   "scripts": {
     "start": "node server/index.cjs",
-    "test": "node --test tests/payment.test.cjs tests/razorpay.test.cjs tests/origin.test.cjs && node tests/payment-flow.cjs",
+    "test": "node --test tests/payment.test.cjs tests/razorpay.test.cjs tests/origin.test.cjs && node tests/payment-flow.cjs && node tests/live-payment-gate.cjs",
     "test:browser": "node tests/browser.cjs",
     "build": "node scripts/build.cjs",
     "test:render": "node tests/render-smoke.cjs"

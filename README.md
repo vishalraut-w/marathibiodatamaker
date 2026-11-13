@@ -1,34 +1,51 @@
 # MarathiPatrikaMakers — Vercel deployment
 
-Marathi biodata builder with 24 designs, PDF/PNG exports, and Razorpay-verified clean downloads.
+Marathi biodata builder with 24 designs, free watermarked PDF/PNG exports, and ₹49 Razorpay-verified watermark-free downloads.
 
 ## Deploy
 
 1. Import this folder into Vercel. Select framework **Other** and Node.js **24.x**.
-2. Keep the project root as the root directory. The included vercel.json sets the build command, public output, and API routing.
-3. Set environment variables below in Vercel Settings → Environment Variables, then deploy.
-4. Test free PDF/PNG exports and Razorpay test-mode checkout on the deployed URL before using live keys. Redeploy after changing variables.
+2. Keep the project root as the root directory. The included `vercel.json` builds the public pages and routes `/api/*` to one Node function.
+3. Set the variables below in Vercel Settings → Environment Variables. Use **Preview** and **Production** only where appropriate, then redeploy.
+4. Test free PDF/PNG exports and a Razorpay **test-mode** checkout on the deployed URL before considering live payments.
 
-No local server, SQLite file, browser installation, or .env file is required for production.
+No database, Redis, webhook, server-side draft store, or `.env` file is required in production. Free exports work with no payment variables.
 
 | Variable | Purpose |
 | --- | --- |
-| APP_ORIGIN | Exact public HTTPS origin, e.g. https://your-project.vercel.app, without a path. Set this for custom domains; otherwise defaults to the Vercel deployment URL. |
-| SESSION_SECRET | Persistent random secret of at least 32 characters. Required for payments. |
-| PAYMENTS_ENABLED | Set true to enable configured payments; unset or false disables checkout. |
-| RAZORPAY_KEY_ID | Test/live Razorpay key ID. |
-| RAZORPAY_KEY_SECRET | Matching private key secret. |
-| RAZORPAY_WEBHOOK_SECRET | Secret configured for your webhook. |
-| UPSTASH_REDIS_REST_URL | Durable Upstash Redis REST endpoint, from Upstash or Vercel Marketplace. |
-| UPSTASH_REDIS_REST_TOKEN | Private REST token for that database. |
+| `APP_ORIGIN` | Exact public HTTPS origin, such as `https://your-domain.in`, with no path. Set it for the canonical custom domain; Vercel deployment URLs are supported automatically. |
+| `PAYMENTS_ENABLED` | Set to `true` only for a configured Razorpay test or explicitly approved live checkout. Omit it or set `false` to keep clean downloads disabled. |
+| `RAZORPAY_KEY_ID` | Razorpay key ID. The code recognizes `rzp_test_…` and `rzp_live_…` IDs only. |
+| `RAZORPAY_KEY_SECRET` | Matching private Razorpay key secret. Never expose it to the browser or commit it. |
+| `PAYMENT_TOKEN_SECRET` | A persistent random secret of at least 32 characters. It signs the short-lived order and download authorizations. |
+| `ALLOW_LIVE_PAYMENTS` | Leave unset while testing. Set to `true` only after a successful test-mode checkout and the live-payment checklist below has been completed. Required with an `rzp_live_…` key. |
 
-Free exports work without payment credentials or Redis. Checkout remains disabled until all payment variables, the session secret and Redis are configured. Configure the Razorpay webhook at https://YOUR-DOMAIN/api/payment/webhook and subscribe to payment.captured.
+`RAZORPAY_WEBHOOK_SECRET`, `UPSTASH_REDIS_REST_URL`, and `UPSTASH_REDIS_REST_TOKEN` are intentionally not used. Do not add a Razorpay webhook for this version.
 
-Paid orders store an immutable biodata snapshot in Redis for 30 days. Signed session cookies bind orders to the same browser. Each paid download checks captured status, exact amount (4900 paise), currency, order identity and refunds against Razorpay. Changing the session secret or deleting cookies prevents recovery.
+## Payment security and data handling
 
-## Architecture
+1. The server normalizes the draft, checks it can render, hashes it, and creates a Razorpay order for exactly **4900 paise / INR**.
+2. It returns a signed order token that binds that Razorpay order to the draft hash for 15 minutes. The full draft stays only in the browser; it is not placed in the token or stored by the application.
+3. After checkout, the server verifies Razorpay's checkout signature and fetches the payment directly from Razorpay. The payment must be captured, for that exact order, for exactly 4900 paise in INR, and have no refunded amount.
+4. Only then does it issue a separate signed download authorization, valid for 30 minutes. Every clean export rechecks Razorpay and accepts only the draft whose hash is bound to that authorization.
 
-Static output contains only explicitly allowed public pages, scripts, styles and assets. Private server files and stored orders are excluded. A Node serverless function handles /api routes. Bundled Linux Chromium renders PDF/PNG using temporary runtime storage. In-memory rate limiting applies per instance; use Vercel Firewall for shared traffic limits. Large image uploads or exports can exceed Vercel payload limits; use smaller images.
+This design deliberately does not support recovering a clean file after the short authorization expires or after the original browser draft is changed/lost. Keep the draft in the browser or use the built-in backup before paying. That trade-off keeps personal biodata and photos out of an application database.
+
+The Razorpay key ID is public by design for Checkout; `RAZORPAY_KEY_SECRET` and `PAYMENT_TOKEN_SECRET` are never sent to the browser. Signed tokens are bearer authorizations, so use HTTPS, keep their lifetime short, and do not log request bodies.
+
+## Test mode, then live mode
+
+The server refuses a live `rzp_live_…` key unless `ALLOW_LIVE_PAYMENTS=true` is also set. This is an intentional safety gate; changing environment variables is the merchant's explicit live-payment decision.
+
+Before setting that flag:
+
+- Deploy with `rzp_test_…` credentials and `PAYMENTS_ENABLED=true`.
+- Complete a real Razorpay test payment on the deployed Vercel URL.
+- Confirm the returned PDF and PNG have no watermark, the free files still have a watermark, and a changed draft is rejected.
+- Confirm the merchant identity, contact details, terms, privacy notice, and refund policy are published and accurate.
+- Switch to matching `rzp_live_…` credentials, set `ALLOW_LIVE_PAYMENTS=true`, and redeploy deliberately.
+
+Never put a test key in a production live deployment or a live secret in Preview. No live key or payment was enabled by this code change.
 
 ## Development and checks
 
@@ -36,20 +53,19 @@ Static output contains only explicitly allowed public pages, scripts, styles and
 npm install
 npm test
 npm run build
+npm run test:render
 ```
 
-Dependencies are pinned in package.json. Run npm install and commit the generated package-lock.json before switching CI to npm ci. The previous lockfile was removed because it described the old dependencies; this environment could not reach npm to regenerate it.
+`npm test` uses a fake Razorpay gateway only: it does not call Razorpay or charge money. It covers token expiry/tampering, order/amount/currency matching, captured-payment checks, refund checks, cross-origin rejection, and clean-download draft binding. `npm run test:render` exercises the server-side PDF/PNG renderer.
 
-Optional local development: npm start. Uses Edge by default; BROWSER_EXECUTABLE_PATH or BROWSER_CHANNEL can select another installed browser. Environment variables come from the shell, with no .env loading. Production never needs npm start or the Windows launchers.
+Optional local development: `npm start`. Environment variables come from the shell; production never needs the Windows launchers.
 
-Payment-flow tests invoke the function directly with a fake gateway and test-only memory storage, without real transactions. Browser checks use npm run test:browser against TEST_ORIGIN, which defaults to the development address.
+## Architecture
 
-Publish merchant contact details, terms and refund policy before accepting live payments. Drafts remain in browser storage; Redis order snapshots contain personal data and photos, so restrict database access. Original asset details and font licensing are documented in DEITY_ASSETS.md and assets/OFL.txt.
+The static build contains only the explicitly allowlisted public pages, scripts, styles, and assets. Private server code and environment variables are excluded. A Vercel Node function handles API routes. Bundled Linux Chromium renders PDF/PNG using temporary runtime storage.
+
+In-memory request throttling applies only to a single function instance; use Vercel Firewall for shared traffic limits. Large image uploads or exports can exceed Vercel request limits, so keep uploaded images modest. Original asset details and font licensing are in `DEITY_ASSETS.md` and `assets/OFL.txt`.
 
 ## GitHub checks
 
-The official razorpay Node SDK handles server-side order creation and payment fetches. Private credentials remain in Vercel environment variables. The browser checkout script is loaded directly from Razorpay.
-
-GitHub Actions installs dependencies, checks the SDK API, runs payment tests, builds public assets, and smoke-tests PDF/PNG generation with the Linux serverless browser. Mocked tests do not charge money or validate a live merchant account. Run a Razorpay test-mode checkout on Vercel before enabling live payments.
-
-Do not upload node_modules, .data, .env files, public build output, or test artifacts; .gitignore excludes them. The project is prepared for GitHub with automated checks and Vercel configuration.
+GitHub Actions installs dependencies, checks the Razorpay SDK interface, runs the isolated payment tests, builds the public assets, and smoke-tests PDF/PNG generation. Do not upload `node_modules`, `.data`, `.env` files, public build output, or test artifacts; `.gitignore` excludes them.

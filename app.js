@@ -149,7 +149,7 @@ async function api(path,body){
  const response=await fetch(path,{method:body?'POST':'GET',headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined});
  if(!response.ok){const error=await response.json().catch(()=>({}));throw Object.assign(Error(error.message||'प्रक्रिया पूर्ण झाली नाही. कृपया पुन्हा प्रयत्न करा.'),{status:response.status});}return response;
 }
-let config=null,activeOrder=null,downloadReady=false,downloadBusy=false,paidOrderReady=false;
+let config=null,activeOrder=null,downloadToken=null,downloadReady=false,downloadBusy=false,paidOrderReady=false;
 function selectedFormat(){return $('input[name="export-format"]:checked')?.value==='png'?'png':'pdf';}
 function setDownloadStatus(text){$('#download-status').textContent=text;}
 function updateDownloadLabels(){
@@ -176,20 +176,21 @@ async function saveDocument(response,format){
 }
 async function paidStatus(){
  let result;
- try{result=await(await api('/api/payment/status',{orderId:activeOrder,draft})).json();}
- catch(error){if(error.status!==403&&error.status!==404)throw error;activeOrder=null;paidOrderReady=false;try{sessionStorage.removeItem('mpm-order');}catch{}$('#retry-paid').hidden=true;updateDownloadLabels();return {paid:false,matchesDraft:false};}
- paidOrderReady=!!result.paid&&!!result.matchesDraft;updateDownloadLabels();return result;
+ if(!activeOrder?.orderToken)return {paid:false,matchesDraft:false};
+ try{result=await(await api('/api/payment/status',{orderToken:activeOrder.orderToken,draft})).json();}
+ catch(error){if(error.status!==403&&error.status!==404)throw error;activeOrder=null;downloadToken=null;paidOrderReady=false;try{sessionStorage.removeItem('mpm-order');}catch{}$('#retry-paid').hidden=true;updateDownloadLabels();return {paid:false,matchesDraft:false};}
+ downloadToken=typeof result.downloadToken==='string'?result.downloadToken:null;paidOrderReady=!!result.paid&&!!result.matchesDraft&&!!downloadToken;updateDownloadLabels();return result;
 }
-async function downloadPaid(format,orderId=activeOrder){await saveDocument(await api('/api/export/paid',{orderId,format}),format);}
+async function downloadPaid(format){if(!downloadToken)throw Error('पेमेंटची सुरक्षित परवानगी उपलब्ध नाही. स्थिती पुन्हा तपासा.');await saveDocument(await api('/api/export/paid',{downloadToken,draft,format}),format);}
 async function recoverPayment(){
  if(!activeOrder||downloadBusy)return;const format=selectedFormat();busy(true);
- try{const result=await paidStatus();if(result.paid){await downloadPaid(format);if(!result.matchesDraft)setDownloadStatus('✓ आधी अनलॉक केलेल्या पत्रिकेची '+format.toUpperCase()+' प्रत डाउनलोड झाली. सध्याचा बदललेला मसुदा यात नाही.');}else setDownloadStatus('पेमेंट अद्याप पूर्ण झालेले नाही. थोड्या वेळाने पुन्हा तपासा.');}
+ try{const result=await paidStatus();if(result.paid&&result.matchesDraft)await downloadPaid(format);else if(result.paid)setDownloadStatus('पेमेंट झाले आहे, पण पत्रिका बदलली आहे. आधीचा मसुदा परत आणा किंवा नवीन पत्रिका अनलॉक करा.');else setDownloadStatus('पेमेंट अद्याप पूर्ण झालेले नाही. थोड्या वेळाने पुन्हा तपासा.');}
  catch(error){setDownloadStatus(error.message);}finally{busy(false);}
 }
 if(page==='download'){
  busy(false);
  $('#export-format').addEventListener('change',updateDownloadLabels);
- try{activeOrder=sessionStorage.getItem('mpm-order');}catch{}
+ try{const saved=JSON.parse(sessionStorage.getItem('mpm-order'));if(saved?.id&&saved?.orderToken)activeOrder=saved;}catch{}
  $('#retry-paid').hidden=!activeOrder;$('#retry-paid').addEventListener('click',recoverPayment);
  mount($('#download-sheet'),draft).then(result=>{downloadReady=!!count()&&result.fits;busy(downloadBusy);if(!downloadReady)setDownloadStatus('माहिती पूर्ण करून पूर्वावलोकनात तपासा.');});
  api('/api/config').then(r=>r.json()).then(async c=>{
@@ -208,12 +209,14 @@ if(page==='download'){
   try{
    if(activeOrder){const result=await paidStatus();if(result.paid&&result.matchesDraft){await downloadPaid(format);busy(false);return;}}
    setDownloadStatus('सुरक्षित पेमेंट सुरू होत आहे…');
-   const order=await(await api('/api/payment/order',{draft})).json();activeOrder=order.id;paidOrderReady=false;
-   try{sessionStorage.setItem('mpm-order',order.id);}catch{}$('#retry-paid').hidden=false;
+   const order=await(await api('/api/payment/order',{draft})).json();
+   if(typeof order.id!=='string'||typeof order.orderToken!=='string')throw Error('पेमेंटची ऑर्डर सुरक्षितपणे तयार झाली नाही. कृपया पुन्हा प्रयत्न करा.');
+   activeOrder={id:order.id,orderToken:order.orderToken};downloadToken=null;paidOrderReady=false;
+   try{sessionStorage.setItem('mpm-order',JSON.stringify(activeOrder));}catch{}$('#retry-paid').hidden=false;
    if(!window.Razorpay)await new Promise((resolve,reject)=>{const script=document.createElement('script');script.src='https://checkout.razorpay.com/v1/checkout.js';script.onload=resolve;script.onerror=()=>reject(Error('पेमेंट सेवा उघडली नाही. कृपया पुन्हा प्रयत्न करा.'));document.head.append(script);});
    const checkout=new Razorpay({key:config.keyId,order_id:order.id,amount:order.amount,currency:order.currency,name:'MarathiPatrikaMakers',description:'परिचय पत्रिका · वॉटरमार्कशिवाय PNG आणि PDF',theme:{color:'#912c49'},handler:async result=>{
     busy(true);setDownloadStatus('पेमेंटची पडताळणी होत आहे…');
-    try{await api('/api/payment/verify',result);paidOrderReady=true;await downloadPaid(format,order.id);}
+    try{const verified=await(await api('/api/payment/verify',{...result,orderToken:activeOrder.orderToken})).json();downloadToken=verified.downloadToken;paidOrderReady=!!downloadToken;await downloadPaid(format);}
     catch(error){setDownloadStatus(error.message+' आधीच्या पेमेंटची स्थिती तपासा.');}finally{busy(false);}
    },modal:{ondismiss:()=>{setDownloadStatus('पेमेंट बंद केले. पूर्ण झाले असल्यास स्थिती तपासा.');busy(false);}}});
    checkout.on('payment.failed',()=>{setDownloadStatus('पेमेंट पूर्ण झाले नाही. कृपया पुन्हा प्रयत्न करा.');busy(false);});checkout.open();
