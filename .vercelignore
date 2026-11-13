@@ -1,0 +1,6 @@
+.env*
+.data
+tests
+public
+START.cmd
+Start-Website.ps1

@@ -1,0 +1,33 @@
+@font-face{font-family:Patrika;src:url("assets/noto-devanagari.ttf") format("truetype");font-weight:100 900;font-display:swap}
+.sheet-viewport{width:100%;position:relative;overflow:clip}
+.sheet-viewport>.biodata-paper{position:absolute;top:0;left:0}
+.biodata-paper{--paper-accent:#ae2d75;--body-size:20px;--row-gap:2px;width:794px;height:1123px;position:relative;overflow:hidden;transform-origin:top left;background:#fff;color:#282329;font-family:Patrika,"Nirmala UI",sans-serif;font-weight:400;box-sizing:border-box;text-align:left}
+.biodata-paper *{box-sizing:border-box}
+.paper-border{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.paper-safe{position:absolute;inset:64px 60px 64px}
+.paper-content{width:100%;display:flow-root}
+.biodata-heading{text-align:center;margin:0 0 10px;color:var(--paper-accent)}
+.ganesh-icon{display:block;width:66px;height:66px;object-fit:contain;margin:0 auto 7px}
+.biodata-heading p{margin:0 0 2px;font-size:18px;line-height:1.5;font-weight:600}
+.biodata-heading h1{font-size:24px;margin:0 0 2px;font-weight:750;line-height:1.5}
+.biodata-section{display:flow-root;margin:0 0 8px}
+.biodata-section:last-child{margin-bottom:0}
+.biodata-section h2{font-size:calc(var(--body-size) * 1.06);font-weight:700;text-align:center;color:var(--paper-accent);line-height:1.45;margin:0 0 5px}
+.biodata-section dl{margin:0;display:flow-root}
+.biodata-row{display:grid;grid-template-columns:180px 12px minmax(0,1fr);column-gap:8px;margin:0;padding:calc(var(--row-gap) / 2) 0;font-size:var(--body-size);line-height:1.35;break-inside:avoid;border:0;background:none}
+.biodata-row dt,.biodata-row dd{padding:0;margin:0;font:inherit;overflow-wrap:anywhere;white-space:pre-wrap}
+.biodata-row dt{font-weight:450}
+.biodata-photo{float:right;width:166px;height:204px;border:2px solid var(--paper-accent);object-fit:cover;margin:3px 0 16px 24px}
+.sample-photo svg{display:block;width:100%;height:100%}
+.paper-empty{text-align:center;margin:110px 0;font-size:19px;color:#81747b}
+.document-watermark{position:absolute;inset:160px 40px 100px;display:flex;flex-direction:column;justify-content:space-evenly;align-items:center;pointer-events:none;z-index:3;color:var(--paper-accent);opacity:.11;font-size:40px;font-weight:700;transform:rotate(-28deg);white-space:nowrap}
+@media print{
+ @page{size:A4 portrait;margin:0}
+ html,body{margin:0!important;padding:0!important;background:#fff!important}
+ body *{visibility:hidden}
+ .biodata-paper,.biodata-paper *{visibility:visible}
+ .biodata-paper{position:absolute!important;top:0!important;left:0!important;transform:none!important;width:210mm!important;height:297mm!important;box-shadow:none!important;print-color-adjust:exact;-webkit-print-color-adjust:exact}
+ .sheet-viewport{overflow:visible!important;position:static!important}
+ .lock-badge{display:none!important}
+}
+

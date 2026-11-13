@@ -1,0 +1,21 @@
+{
+  "name": "marathi-patrika-makers",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Marathi biodata builder with server-verified PDF downloads",
+  "scripts": {
+    "start": "node server/index.cjs",
+    "test": "node --test tests/payment.test.cjs tests/razorpay.test.cjs && node tests/payment-flow.cjs",
+    "test:browser": "node tests/browser.cjs",
+    "build": "node scripts/build.cjs",
+    "test:render": "node tests/render-smoke.cjs"
+  },
+  "engines": {
+    "node": "24.x"
+  },
+  "dependencies": {
+    "@sparticuz/chromium": "143.0.4",
+    "playwright-core": "1.57.0",
+    "razorpay": "2.9.6"
+  }
+}

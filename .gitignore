@@ -1,0 +1,9 @@
+node_modules/
+.env
+.data/
+tests/artifacts/
+*.log
+
+.env*
+public/
+.vercel/

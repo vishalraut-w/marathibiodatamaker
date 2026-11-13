@@ -1,0 +1,17 @@
+name: Checks
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install
+      - run: node -e "const R=require('razorpay'); const client=new R({key_id:'fixture_key',key_secret:'fixture_secret'}); if(typeof client.orders.create!=='function'||typeof client.orders.fetchPayments!=='function'||typeof client.payments.fetch!=='function') process.exit(1)"
+      - run: npm test
+      - run: npm run build
+      - run: npm run test:render
