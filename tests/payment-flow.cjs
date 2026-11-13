@@ -34,6 +34,13 @@ async function request(url,options={}){
  const rejected=await request(origin+'/api/export/free',{method:'POST',headers:{Origin:'https://attacker.example'},body:JSON.stringify({draft:P.demo()})});
  assert.equal(rejected.status,403,'cross-origin exports are rejected');
  assert.equal((await request(origin+'/.env')).status,404,'private files are never served');
+ const aliasExport=await request('https://marathibiodatamaker.vercel.app/api/export/free',{
+  method:'POST',headers:{Host:'marathibiodatamaker.vercel.app',Origin:'https://marathibiodatamaker.vercel.app','Content-Type':'application/json'},
+  body:JSON.stringify({draft:P.demo(),format:'png'})
+ });
+ assert.equal(aliasExport.status,200,'watermarked PNG works on a Vercel alias that differs from APP_ORIGIN');
+ assert.equal(aliasExport.headers.get('content-type'),'image/png');
+ assert.equal(rendered.watermark,true);
  const cookie=config.headers.get('set-cookie').split(';')[0];
  async function post(route,data,cookieValue=cookie){return request(origin+route,{method:'POST',headers:{Origin:origin,Cookie:cookieValue,'Content-Type':'application/json'},body:JSON.stringify(data)});}
  const d=P.demo();

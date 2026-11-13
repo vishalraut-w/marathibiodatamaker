@@ -3,8 +3,9 @@ const http=require('node:http'),fsp=require('node:fs/promises'),path=require('no
 const {randomBytes,createHmac,createHash,timingSafeEqual}=require('node:crypto');
 const P=require('../data.js'),payments=require('./payment.cjs'),pdf=require('./pdf.cjs');
 const orders=require('./orders.cjs');
+const {normalizeOrigin,requestIsAllowed}=require('./origin.cjs');
 const ROOT=path.resolve(__dirname,'..'),HOST=process.env.HOST||'127.0.0.1',PORT=Number(process.env.PORT)||4173;
-const ORIGIN=process.env.APP_ORIGIN?.replace(/\/$/,'')||(process.env.VERCEL_URL?'https://'+process.env.VERCEL_URL:'http://'+HOST+':'+PORT);
+const ORIGIN=normalizeOrigin(process.env.APP_ORIGIN?.trim())||(process.env.VERCEL_URL?'https://'+process.env.VERCEL_URL:'http://'+HOST+':'+PORT);
 const SESSION_SECRET=process.env.SESSION_SECRET||randomBytes(32).toString('hex');
 const paymentsEnabled=process.env.PAYMENTS_ENABLED==='true'&&!!process.env.RAZORPAY_KEY_ID&&!!process.env.RAZORPAY_KEY_SECRET&&!!process.env.RAZORPAY_WEBHOOK_SECRET&&(process.env.SESSION_SECRET?.length>=32)&&orders.configured;
 const rates=new Map();
@@ -64,9 +65,7 @@ async function handler(req,res){
    const sid=session(req,res);
    if(req.method==='GET'&&url.pathname==='/api/config')return json(res,200,{paymentsEnabled,keyId:paymentsEnabled?process.env.RAZORPAY_KEY_ID:null,amount:payments.PRICE,currency:payments.CURRENCY});
    if(req.method!=='POST')throw fail('Not found',404);
-   const origin=req.headers.origin;
-   const allowed=new Set([ORIGIN]);
-   if(!origin||!allowed.has(origin))throw fail('ही विनंती स्वीकारता येत नाही.',403);
+   if(!requestIsAllowed(req,ORIGIN))throw fail('ही विनंती स्वीकारता येत नाही.',403);
    const raw=await readBody(req);let body;try{body=JSON.parse(raw.toString('utf8'));}catch{throw fail('योग्य माहिती पाठवा.');}
    if(['/api/pdf/free','/api/export/free'].includes(url.pathname)){
     const format=exportFormat(body),result=await pdf.makePDF(draftFrom(body),true,format);
