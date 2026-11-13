@@ -7,3 +7,11 @@ tests/artifacts/
 .env*
 public/
 .vercel/
+
+# Generated build output and tooling caches
+coverage/
+dist/
+build/
+.next/
+.cache/
+*.tsbuildinfo
