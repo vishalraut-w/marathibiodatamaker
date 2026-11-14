@@ -1,0 +1,46 @@
+'use strict';
+const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+const {transliterate,suggest}=require('../transliterator.js');
+test('converts common Marathi names and phonetic text while preserving punctuation',()=>{
+ assert.equal(transliterate('vishal raut'), 'विशाल राऊत');
+ assert.equal(transliterate('namaskar, sheti!'), 'नमस्कार, शेती!');
+ assert.equal(transliterate('vyavsay: sheti 123'), 'व्यवसाय: शेती 123');
+ assert.equal(transliterate('shree amit'), 'श्री अमित');
+ assert.equal(transliterate('saa'), 'सा');
+ assert.equal(transliterate('आधीच मराठी'), 'आधीच मराठी');
+ assert.equal(transliterate('sakhar ani kanda'), 'साखर आणि कांदा');
+ assert.deepEqual(suggest('vishal').slice(0,2),['विशाल','विषाल']);
+ assert.equal(suggest('sakhar')[0],'साखर');assert.deepEqual(suggest('!'),[]);
+ assert.equal(transliterate('mera naam ali','ur'),'میرا نام علی');assert.equal(transliterate('allah','ur'),'اللہ');
+ assert.equal(transliterate('mohammad khan','hi'),'मोहम्मद खान');assert.equal(suggest('nikah','ur')[0],'نکاح');
+});
+test('typing panel opens, converts, allows edits and copies the edited result',async()=>{
+ const make=()=>({value:'',hidden:false,textContent:'',attrs:{},events:{},children:[],setAttribute(k,v){this.attrs[k]=v;},addEventListener(k,f){this.events[k]=f;},focus(){this.focused=true;},select(){this.selected=true;},setSelectionRange(start){this.selectionStart=start;},replaceChildren(){this.children=[];},append(child){this.children.push(child);},querySelector(){return this.children[0]||null;}});
+ const ids=['marathi-toggle','marathi-panel','marathi-input','marathi-output','marathi-status','marathi-close','marathi-copy','marathi-suggestions','marathi-suggestion-list','marathi-regenerate'];
+ const els=Object.fromEntries(ids.map(id=>[id,make()]));els['marathi-panel'].hidden=true;
+ let copied='';const context={document:{querySelector:s=>els[s.slice(1)]||null,createElement:make},window:{isSecureContext:true},navigator:{clipboard:{writeText:async value=>{copied=value;}}}};
+ vm.runInNewContext(fs.readFileSync(require.resolve('../transliterator.js'),'utf8'),context);
+ els['marathi-toggle'].events.click();assert.equal(els['marathi-panel'].hidden,false);assert.equal(els['marathi-toggle'].attrs['aria-expanded'],'true');
+ els['marathi-input'].value='vishal';els['marathi-input'].selectionStart=6;els['marathi-input'].events.input();assert.equal(els['marathi-output'].value,'विशाल');
+ assert.equal(els['marathi-suggestions'].hidden,false);
+ els['marathi-suggestion-list'].children.find(b=>b.textContent==='विशाळ').events.click();
+ assert.equal(els['marathi-input'].value,'विशाळ');assert.equal(els['marathi-output'].value,'विशाळ');
+ els['marathi-input'].value+=' raut';els['marathi-input'].selectionStart=els['marathi-input'].value.length;els['marathi-input'].events.input();assert.equal(els['marathi-output'].value,'विशाळ राऊत');
+ els['marathi-output'].value='विशाळ राऊत पाटील';els['marathi-output'].events.input();
+ els['marathi-suggestion-list'].children.find(b=>b.textContent==='रावत').events.click();assert.equal(els['marathi-output'].value,'विशाळ रावत पाटील');
+ els['marathi-input'].value+=' patil';els['marathi-input'].selectionStart=els['marathi-input'].value.length;els['marathi-input'].events.input();assert.equal(els['marathi-output'].value,'विशाळ रावत पाटील');assert.equal(els['marathi-regenerate'].hidden,false);
+ els['marathi-output'].value='विशाल राऊत';await els['marathi-copy'].events.click();assert.equal(copied,'विशाल राऊत');
+ context.window.isSecureContext=false;context.document.execCommand=command=>command==='copy';
+ await els['marathi-copy'].events.click();assert.equal(els['marathi-output'].selected,true);assert.equal(els['marathi-status'].textContent,'मजकूर कॉपी झाला.');
+ els['marathi-close'].events.click();assert.equal(els['marathi-panel'].hidden,true);assert.equal(els['marathi-toggle'].focused,true);
+});
+test('language selector switches between Hindi and Urdu without losing edited output',()=>{
+ const make=()=>({value:'',hidden:false,textContent:'',attrs:{},events:{},children:[],setAttribute(k,v){this.attrs[k]=v;},addEventListener(k,f){this.events[k]=f;},focus(){},setSelectionRange(start){this.selectionStart=start;},replaceChildren(){this.children=[];},append(c){this.children.push(c);},querySelector(){return this.children[0]||null;}});
+ const ids=['marathi-toggle','marathi-panel','marathi-input','marathi-output','marathi-status','marathi-close','marathi-copy','marathi-suggestions','marathi-suggestion-list','marathi-regenerate','transliteration-language'];
+ const els=Object.fromEntries(ids.map(id=>[id,make()]));els['transliteration-language'].value='hi';
+ const context={document:{querySelector:s=>els[s.slice(1)]||null,createElement:make},window:{},navigator:{}};
+ vm.runInNewContext(fs.readFileSync(require.resolve('../transliterator.js'),'utf8'),context);
+ els['marathi-input'].value='mera naam';els['marathi-input'].selectionStart=9;els['marathi-input'].events.input();assert.equal(els['marathi-output'].value,'मेरा नाम');
+ els['transliteration-language'].value='ur';els['transliteration-language'].events.change();assert.equal(els['marathi-output'].value,'میرا نام');
+ els['marathi-output'].value='میرا نام علی';els['marathi-output'].events.input();els['transliteration-language'].value='hi';els['transliteration-language'].events.change();assert.equal(els['marathi-output'].value,'میرا نام علی');assert.equal(els['marathi-regenerate'].hidden,false);
+});

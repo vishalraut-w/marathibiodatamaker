@@ -1,6 +1,6 @@
 # MarathiPatrikaMakers — Vercel deployment
 
-Marathi biodata builder with 24 designs, free watermarked PDF/PNG exports, and ₹49 Razorpay-verified watermark-free downloads.
+Marathi biodata builder with 56 general, 15 Buddhist, 16 Islamic, and 15 Christian designs, free watermarked PDF/PNG exports, and ₹49 Razorpay-verified watermark-free downloads.
 
 ## Deploy
 
@@ -21,6 +21,8 @@ No database, Redis, webhook, server-side draft store, or `.env` file is required
 | `ALLOW_LIVE_PAYMENTS` | Leave unset while testing. Set to `true` only after a successful test-mode checkout and the live-payment checklist below has been completed. Required with an `rzp_live_…` key. |
 
 `RAZORPAY_WEBHOOK_SECRET`, `UPSTASH_REDIS_REST_URL`, and `UPSTASH_REDIS_REST_TOKEN` are intentionally not used. Do not add a Razorpay webhook for this version.
+
+Use the exact name `PAYMENT_TOKEN_SECRET`: `SESSION_SECRET` does not enable payments in this version. If it is missing or shorter than 32 characters, paid downloads remain disabled.
 
 ## Payment security and data handling
 

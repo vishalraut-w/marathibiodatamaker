@@ -2,7 +2,7 @@
 const fs=require('node:fs/promises'),path=require('node:path');
 const root=path.resolve(__dirname,'..');
 const P=require('../data.js');
-const allowedAssets=new Set(['/assets/noto-devanagari.ttf',...P.headers.filter(h=>h.file).map(h=>'/'+h.file)]);
+const allowedAssets=new Set(['/assets/noto-devanagari.ttf','/assets/noto-naskh-arabic.ttf',...P.headers.filter(h=>h.file).map(h=>'/'+h.file)]);
 let browserPromise,active=0;
 async function browser(){
  const {chromium}=require('playwright-core');

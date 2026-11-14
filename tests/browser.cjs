@@ -10,31 +10,31 @@ const origin=process.env.TEST_ORIGIN||'http://127.0.0.1:4173',out=path.join(__di
  try{
   await page.goto(origin);await page.locator('#hero-sheet .biodata-paper[data-fits]').waitFor();
   await page.screenshot({path:path.join(out,'homepage.png'),fullPage:true});
-  await page.goto(origin+'/templates.html');assert.equal(await page.locator('.template-card').count(),24);
-  await page.getByRole('button',{name:'फोटोशिवाय',exact:true}).click();assert.equal(await page.locator('.template-card').count(),12);
+  await page.goto(origin+'/templates.html');assert.equal(await page.locator('.template-card').count(),56);
+  await page.getByRole('button',{name:'फोटोशिवाय',exact:true}).click();assert.equal(await page.locator('.template-card').count(),28);
   await page.getByRole('button',{name:'सर्व रचना',exact:false}).click();
   await page.locator('[data-choose="pushp"]').click();await page.locator('[data-field="fullName"]').fill('चि. चाचणी देशमुख');
-  assert.equal(await page.locator('#header-options [data-header]').count(),15);
-  assert.equal(await page.locator('#header-select option').last().getAttribute('value'),'upload');
-  await page.locator('#header-select').selectOption('tuljabhavani');
+  assert.equal(await page.locator('#header-options [data-header]').count(),26);
+  assert.equal(await page.locator('#image-picker').evaluate(el=>el.open),false);
+  await page.locator('#image-picker summary').click();
+  await page.locator('[data-header="tuljabhavani"]').click();
   assert.equal(await page.locator('#invocation').inputValue(),'॥ श्री तुळजाभवानी प्रसन्न ॥');
   await page.locator('#invocation').fill('॥ माझी आशीर्वाद ओळ ॥');
-  await page.locator('[data-header="khandoba"]').click();
-  assert.equal(await page.locator('#header-select').inputValue(),'khandoba');
+  await page.locator('#image-picker summary').click();await page.locator('[data-header="khandoba"]').click();
+  assert.match(await page.locator('#header-current').textContent(),/खंडोबा/);
   assert.equal(await page.locator('#invocation').inputValue(),'॥ माझी आशीर्वाद ओळ ॥');
   for(const h of P.headers.filter(h=>h.file&&!h.legacy)){
    const response=await context.request.get(origin+'/'+h.file);assert.equal(response.status(),200,h.name+' PNG accessible');
-   const bytes=await response.body();assert.equal(bytes.subarray(1,4).toString(),'PNG');assert.ok([4,6].includes(bytes[25]),h.name+' retains alpha');
+   const bytes=await response.body();if(h.file.endsWith('.svg'))assert.match(bytes.toString('utf8'),/<svg/);else{assert.equal(bytes.subarray(1,4).toString(),'PNG');assert.ok([4,6].includes(bytes[25]),h.name+' retains alpha');}
   }
   await page.locator('#header-upload').setInputFiles(path.join(__dirname,'../assets/deity-ganesh-gold.png'));
-  await page.locator('#selected-header-preview strong').filter({hasText:'तुमचे देवतेचे चित्र'}).waitFor();
-  assert.equal(await page.locator('#header-select').inputValue(),'upload');
+  await page.waitForFunction(()=>document.querySelector('#header-current').textContent==='तुमचे चित्र');
   const testPortrait=await page.evaluate(()=>{const c=document.createElement('canvas');c.width=160;c.height=200;const g=c.getContext('2d');g.fillStyle='#e9ded6';g.fillRect(0,0,160,200);g.fillStyle='#98796b';g.beginPath();g.arc(80,65,33,0,Math.PI*2);g.fill();g.fillRect(30,110,100,90);return c.toDataURL('image/png').split(',')[1];});
   await page.locator('#photo-upload').setInputFiles({name:'synthetic-test-avatar.png',mimeType:'image/png',buffer:Buffer.from(testPortrait,'base64')});
   await page.locator('#photo-thumb img').waitFor();
-  await page.locator('[data-header="tuljabhavani"]').click();
+  await page.locator('#image-picker summary').click();await page.locator('[data-header="tuljabhavani"]').click();
   await page.setViewportSize({width:1440,height:1500});
-  await page.locator('#header-select').scrollIntoViewIfNeeded();
+  await page.locator('#image-picker summary').click();await page.locator('#image-picker').scrollIntoViewIfNeeded();
   await page.locator('#toast').waitFor({state:'hidden'});
   await page.locator('.deity-picker').evaluate(el=>window.scrollTo(0,el.getBoundingClientRect().top+window.scrollY-100));
   await page.locator('.deity-picker').screenshot({path:path.join(out,'deity-gallery.png')});
@@ -53,7 +53,7 @@ const origin=process.env.TEST_ORIGIN||'http://127.0.0.1:4173',out=path.join(__di
   await page.locator('[data-row="bloodGroup"] [data-action="hide"]').click();
   await page.locator('[data-field="fullName"]').blur();await page.waitForTimeout(250);await page.reload();
   assert.equal(await page.locator('[data-field="kuldaivat"]').inputValue(),'श्री खंडोबा, जेजुरी');assert.equal(await page.locator('[data-other="gotra"]').inputValue(),'माझे गोत्र');
-  assert.equal(await page.locator('#header-select').inputValue(),'tuljabhavani');
+  assert.match(await page.locator('#header-current').textContent(),/तुळजाभवानी/);
   await page.goto(origin+'/preview.html');await page.locator('.biodata-paper[data-fits]').waitFor();
   assert.equal(await page.locator('.biodata-row').filter({hasText:'रक्तगट'}).count(),0);
   assert.equal(await page.locator('.biodata-row').filter({hasText:'मामा'}).count(),1);
@@ -107,7 +107,7 @@ const origin=process.env.TEST_ORIGIN||'http://127.0.0.1:4173',out=path.join(__di
   assert.equal(response.status(),200,await response.text().then(x=>x.slice(0,200)));const pdf=await response.body();assert.equal(pdf.subarray(0,4).toString(),'%PDF');
   await fs.writeFile(path.join(out,'sample-watermarked.pdf'),pdf);
   assert.deepEqual(errors,[]);await fs.writeFile(path.join(out,'results.json'),JSON.stringify({fitResults,errors,pdfBytes:pdf.length},null,2));
-  console.log('PASS: all routes, mobile widths, form controls, draft persistence, 24 designs, adaptive A4 and protected PDF endpoints.');
+  console.log('PASS: all routes, mobile widths, form controls, draft persistence, 56 designs, adaptive A4 and protected PDF endpoints.');
  }finally{await context.close();await browser.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});
 

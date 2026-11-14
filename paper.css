@@ -1,13 +1,19 @@
 @font-face{font-family:Patrika;src:url("assets/noto-devanagari.ttf") format("truetype");font-weight:100 900;font-display:swap}
+@font-face{font-family:PatrikaArabic;src:url("assets/noto-naskh-arabic.ttf") format("truetype");font-weight:100 900;font-display:swap;unicode-range:U+0600-06FF,U+0750-077F,U+08A0-08FF,U+FB50-FDFF,U+FE70-FEFF}
 .sheet-viewport{width:100%;position:relative;overflow:clip}
 .sheet-viewport>.biodata-paper{position:absolute;top:0;left:0}
-.biodata-paper{--paper-accent:#ae2d75;--body-size:20px;--row-gap:2px;width:794px;height:1123px;position:relative;overflow:hidden;transform-origin:top left;background:#fff;color:#282329;font-family:Patrika,"Nirmala UI",sans-serif;font-weight:400;box-sizing:border-box;text-align:left}
+.biodata-paper{--paper-accent:#ae2d75;--paper-bg:#fff;--paper-ink:#282329;--body-size:20px;--row-gap:2px;width:794px;height:1123px;position:relative;overflow:hidden;transform-origin:top left;background:var(--paper-bg);color:var(--paper-ink);font-family:Patrika,PatrikaArabic,"Nirmala UI",sans-serif;font-weight:400;box-sizing:border-box;text-align:left}
 .biodata-paper *{box-sizing:border-box}
 .paper-border{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 .paper-safe{position:absolute;inset:64px 60px 64px}
+.ornate-paper .paper-safe{inset:68px 72px}
 .paper-content{width:100%;display:flow-root}
 .biodata-heading{text-align:center;margin:0 0 10px;color:var(--paper-accent)}
 .ganesh-icon{display:block;width:66px;height:66px;object-fit:contain;margin:0 auto 7px}
+.islamic-art-green .ganesh-icon{filter:grayscale(1) sepia(1) saturate(4) hue-rotate(75deg) brightness(.65)}
+.islamic-art-green-dark .ganesh-icon{filter:grayscale(1) sepia(1) saturate(4) hue-rotate(75deg) brightness(1.35)}
+.islamic-art-gold .ganesh-icon{filter:grayscale(1) sepia(1) saturate(2) brightness(.75)}
+.islamic-art-gold-dark .ganesh-icon{filter:grayscale(1) sepia(1) saturate(2) brightness(1.3)}
 .biodata-heading p{margin:0 0 2px;font-size:18px;line-height:1.5;font-weight:600}
 .biodata-heading h1{font-size:24px;margin:0 0 2px;font-weight:750;line-height:1.5}
 .biodata-section{display:flow-root;margin:0 0 8px}

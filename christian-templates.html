@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="mr">
+<head>
+ <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+ <meta name="theme-color" content="#294e72"><meta name="description" content="ख्रिश्चन परिचय पत्रिकेसाठी सुंदर रचना निवडा.">
+ <title>ख्रिश्चन परिचय पत्रिका · MarathiPatrikaMakers</title>
+ <link rel="icon" href="assets/christian-cross.png" type="image/png">
+ <link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="paper.css"><link rel="stylesheet" href="home.css"><link rel="stylesheet" href="templates.css">
+ <script defer src="data.js"></script><script defer src="renderer.js"></script><script defer src="app.js"></script><script defer src="site-nav.js"></script>
+</head>
+<body data-page="templates" data-religion="christian">
+ <a class="skip-link" href="#main">मुख्य मजकुराकडे जा</a>
+ <header class="site-header">
+  <a class="brand" href="index.html" aria-label="MarathiPatrikaMakers मुख्यपृष्ठ"><img src="assets/christian-cross.png" alt=""><span>Marathi<span class="brand-accent">Patrika</span>Makers<small>आपल्या नात्यांची, सुंदर सुरुवात.</small></span></a>
+  <nav aria-label="मुख्य नेव्हिगेशन"><a href="templates.html">रचना पहा</a><a href="index.html#how">कसे बनवायचे?</a><details class="home-nav-menu"><summary data-en="Religion">धर्म</summary><div class="home-nav-options"><a href="templates.html"><span data-en="Hinduism">हिंदू</span></a><a href="buddhist-templates.html"><span data-en="Buddhism">बौद्ध</span></a><a href="islamic-templates.html"><span data-en="Islam">इस्लाम</span></a><a href="christian-templates.html"><span data-en="Christianity">ख्रिश्चन</span></a></div></details><details class="home-nav-menu"><summary data-en="Invitations">निमंत्रणे</summary><div class="home-nav-options"><span aria-disabled="true"><span data-en="Baras (naming ceremony)">बारसं</span><small data-en="Coming soon">लवकरच</small></span><span aria-disabled="true"><span data-en="Nidhan (condolence)">निधन</span><small data-en="Coming soon">लवकरच</small></span><span aria-disabled="true"><span data-en="Varshshradh (anniversary rites)">वर्षश्राद्ध</span><small data-en="Coming soon">लवकरच</small></span></div></details><a class="btn small" href="builder.html">पत्रिका तयार करा <span aria-hidden="true">↗</span></a><div class="home-language" role="group" aria-label="Homepage language"><button type="button" data-lang="mr" aria-pressed="true" lang="mr">मराठी</button><button type="button" data-lang="en" aria-pressed="false" lang="en">ENG</button></div></nav>
+ </header>
+ <main id="main" class="container page-main">
+  <nav class="steps" aria-label="पत्रिका तयार करण्याच्या पायऱ्या"><a href="christian-templates.html" class="current" aria-current="step"><span>१</span>रचना निवडा</a><a href="builder.html"><span>२</span>माहिती भरा</a><a href="preview.html"><span>३</span>पत्रिका पहा</a><a href="download.html"><span>४</span>डाउनलोड</a></nav>
+  <div class="page-heading"><p class="eyebrow">प्रेम · विश्वास · सुंदर रचना</p><h1>ख्रिश्चन परिचय पत्रिका</h1><p>आपल्या आवडीची रचना निवडा आणि सोप्या पायऱ्यांत परिचय पत्रिका तयार करा.</p></div>
+  <div class="gallery-toolbar"><div class="filter-group" role="group" aria-label="रचना फिल्टर"><button type="button" data-filter="all" class="active" aria-pressed="true">सर्व रचना</button><button type="button" data-filter="photo" aria-pressed="false">फोटोसह</button><button type="button" data-filter="plain" aria-pressed="false">फोटोशिवाय</button></div><p id="template-count" aria-live="polite">१५ रचना</p></div>
+  <div id="template-gallery" class="template-grid"></div>
+ </main>
+ <footer class="site-footer"><a class="brand-text" href="index.html">MarathiPatrikaMakers<span>मनापासून जुळणाऱ्या नात्यांसाठी.</span></a><div><a href="templates.html">इतर रचना</a><a href="index.html#questions">मदत</a><a href="privacy.html">गोपनीयता</a></div></footer>
+ <div id="toast" class="toast" role="status" aria-live="polite"></div>
+ <dialog id="sheet-dialog" class="sheet-dialog"><div class="dialog-toolbar"><strong>परिचय पत्रिका · पूर्वावलोकन</strong><button class="icon-btn" data-close-dialog aria-label="पूर्वावलोकन बंद करा">×</button></div><div class="dialog-paper"><div class="sheet-viewport" id="dialog-sheet"></div></div><p class="dialog-note" id="dialog-note"></p></dialog>
+</body>
+</html>

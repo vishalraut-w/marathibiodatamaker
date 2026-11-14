@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="Dharma wheel">
+ <g fill="none" stroke="#b17c30" stroke-width="4">
+  <circle cx="50" cy="50" r="37"/><circle cx="50" cy="50" r="30"/><circle cx="50" cy="50" r="8"/>
+  <path d="M50 13v29M50 58v29M13 50h29M58 50h29M24 24l20 20M56 56l20 20M76 24 56 44M44 56 24 76"/>
+ </g><circle cx="50" cy="50" r="3" fill="#b17c30"/>
+</svg>

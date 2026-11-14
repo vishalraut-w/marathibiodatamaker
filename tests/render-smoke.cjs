@@ -11,6 +11,12 @@ if(process.platform==='win32'){
   assert.equal(document.subarray(0,5).toString(),'%PDF-');
   const image=await pdf.makePDF(draft,true,'png');
   assert.equal(image.subarray(0,8).toString('hex'),'89504e470d0a1a0a');
+  const islamic=P.demo('islamic');islamic.values.fullName='عائشہ خان';islamic.header='islamic-allah';
+  const islamicPdf=await pdf.makePDF(islamic,true,'pdf');assert.equal(islamicPdf.subarray(0,5).toString(),'%PDF-');
+  const islamicPng=await pdf.makePDF(islamic,true,'png');assert.equal(islamicPng.subarray(0,8).toString('hex'),'89504e470d0a1a0a');
+  const christian=P.demo();christian.templateId='christian-grace';christian.header='christian-jesus';christian.values.invocation='';
+  const christianPdf=await pdf.makePDF(christian,true,'pdf');assert.equal(christianPdf.subarray(0,5).toString(),'%PDF-');
+  const christianPng=await pdf.makePDF(christian,true,'png');assert.equal(christianPng.subarray(0,8).toString('hex'),'89504e470d0a1a0a');
   console.log('PASS: serverless Chromium exports PDF and PNG using bundled fonts and assets.');
  })().catch(error=>{console.error(error);process.exitCode=1;}).finally(()=>pdf.close());
 }

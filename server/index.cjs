@@ -26,10 +26,17 @@ async function readBody(req){
 }
 function draftFrom(body){
  const d=P.normalize(body.draft);
- if(!Object.keys(P.sections).some(s=>P.entries(d,s).length))throw fail('आधी तुमची माहिती भरा.',422);
+ if(!Object.keys(P.sectionsFor(d)).some(s=>P.entries(d,s).length)&&!P.customSectionEntries(d).length)throw fail('आधी तुमची माहिती भरा.',422);
  return d;
 }
-function draftDigest(draft){return createHash('sha256').update(JSON.stringify(draft)).digest('hex');}
+function draftDigest(draft){
+ // Preserve tokens issued for older drafts that have no custom sections or label choice.
+ const {labelOverrides,...withoutOverrides}=draft;
+ const hasOverrides=Object.keys(labelOverrides||{}).length>0;
+ const {customSections,professionLabel,...legacy}=withoutOverrides;
+ const canonical=!hasOverrides&&customSections.length===0&&professionLabel==='व्यवसाय'?legacy:hasOverrides?draft:withoutOverrides;
+ return createHash('sha256').update(JSON.stringify(canonical)).digest('hex');
+}
 function exportFormat(body){const format=body.format??'pdf';if(!['pdf','png'].includes(format))throw fail('PDF किंवा PNG प्रकार निवडा.');return format;}
 function sendDocument(res,result,format){res.writeHead(200,{'Content-Type':format==='png'?'image/png':'application/pdf','Content-Disposition':'attachment; filename="parichay-patrika.'+format+'"'});res.end(result);}
 function paymentClaims(token,type){
@@ -53,7 +60,7 @@ async function paymentStatus(claims){
  return null;
 }
 const MIME={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.ttf':'font/ttf','.png':'image/png','.txt':'text/plain; charset=utf-8'};
-const publicFiles=new Set(['index.html','templates.html','builder.html','preview.html','download.html','privacy.html','styles.css','paper.css','app.js','data.js','renderer.js']);
+const publicFiles=new Set(['index.html','templates.html','buddhist-templates.html','christian-templates.html','islamic-templates.html','builder.html','islamic-builder.html','preview.html','download.html','privacy.html','styles.css','paper.css','home.css','home.js','site-nav.js','transliterator.js','templates.css','app.js','data.js','renderer.js']);
 async function handler(req,res){
  res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','same-origin');
  res.setHeader('X-Frame-Options','DENY');
@@ -122,4 +129,4 @@ if(require.main===module&&!process.env.VERCEL){
  async function shutdown(){server.closeAllConnections();server.close();await pdf.close();}
  process.on('SIGINT',shutdown);process.on('SIGTERM',shutdown);
 }
-module.exports={handler,server};
+module.exports={handler,server,draftDigest};
