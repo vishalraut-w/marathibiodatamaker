@@ -4,6 +4,15 @@ const {handler}=require('../server/index.cjs');
 const root=path.resolve(__dirname,'..'),origin='https://www.vivahpatrikamaker.in';
 const read=file=>fs.readFileSync(path.join(root,file),'utf8');
 const indexable=['index.html','templates.html','buddhist-templates.html','christian-templates.html','islamic-templates.html','builder.html','islamic-builder.html','varshradh-templates.html','varshradh-builder.html'];
+test('Google Tag Manager loads once on each public page',()=>{
+ for(const file of [...indexable,'preview.html','download.html','privacy.html']){
+  const html=read(file),head=html.match(/<head>([\s\S]*?)<\/head>/i)?.[1];
+  assert.ok(head,file);
+  assert.equal((head.match(/https:\/\/www\.googletagmanager\.com\/gtm\.js\?id=GTM-NL5L5P6N/g)||[]).length,1,file);
+  assert.match(head,/window\.dataLayer\s*=\s*window\.dataLayer\s*\|\|\s*\[\]/,file);
+  assert.match(head,/gtag\('js',\s*new Date\(\)\)/,file);
+ }
+});
 test('sitemap pages have distinct titles, descriptions and matching canonical URLs',()=>{
  const sitemap=read('sitemap.xml'),robots=read('robots.txt'),titles=new Set(),descriptions=new Set();
  assert.match(robots,/Sitemap: https:\/\/www\.vivahpatrikamaker\.in\/sitemap\.xml/);
