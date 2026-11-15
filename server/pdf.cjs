@@ -3,28 +3,27 @@ const fs=require('node:fs/promises'),path=require('node:path');
 const root=path.resolve(__dirname,'..');
 const P=require('../data.js');
 const allowedAssets=new Set(['/assets/noto-devanagari.ttf','/assets/noto-naskh-arabic.ttf',...P.headers.filter(h=>h.file).map(h=>'/'+h.file)]);
-let browserPromise,active=0;
+let binaryPathPromise,active=0;
+const browsers=new Set();
 async function browser(){
  const {chromium}=require('playwright-core');
- if(!browserPromise)browserPromise=(async()=>{
-  const options={headless:true};
-  if(process.env.VERCEL){
-   const binary=require('@sparticuz/chromium');
-   options.args=binary.args;options.executablePath=await binary.executablePath();
-  }else if(process.env.BROWSER_EXECUTABLE_PATH)options.executablePath=process.env.BROWSER_EXECUTABLE_PATH;
-  else options.channel=process.env.BROWSER_CHANNEL||'msedge';
-  const instance=await chromium.launch(options);
-  instance.on('disconnected',()=>{browserPromise=null;});return instance;
- })().catch(error=>{browserPromise=null;throw error;});
- return browserPromise;
+ const options={headless:true};
+ if(process.env.VERCEL){
+  const binary=require('@sparticuz/chromium');
+  // Share extraction, not the single-process browser, across concurrent requests.
+  if(!binaryPathPromise)binaryPathPromise=binary.executablePath().catch(error=>{binaryPathPromise=null;throw error;});
+  options.args=binary.args;options.executablePath=await binaryPathPromise;
+ }else if(process.env.BROWSER_EXECUTABLE_PATH)options.executablePath=process.env.BROWSER_EXECUTABLE_PATH;
+ else options.channel=process.env.BROWSER_CHANNEL||'msedge';
+ const instance=await chromium.launch(options);browsers.add(instance);return instance;
 }
 // Keep the original function name for compatibility; both exports share A4 geometry.
 async function makePDF(draft,watermark,format='pdf'){
  if(!['pdf','png'].includes(format))throw Object.assign(Error('PDF किंवा PNG प्रकार निवडा.'),{status:400});
  if(active>=2)throw Object.assign(Error('कृपया काही क्षणांनी पुन्हा प्रयत्न करा.'),{status:429});
- active++;let context;
+ active++;let instance,context;
  try{
-  const b=await browser();context=await b.newContext({viewport:{width:794,height:1123},deviceScaleFactor:format==='png'?2:1});
+  instance=await browser();context=await instance.newContext({viewport:{width:794,height:1123},deviceScaleFactor:format==='png'?2:1});
   const page=await context.newPage();page.setDefaultTimeout(20000);
   await page.route('**/*',async route=>{
    const url=new URL(route.request().url());
@@ -45,8 +44,14 @@ async function makePDF(draft,watermark,format='pdf'){
   if(!fit.fits)throw Object.assign(Error('माहिती एका पानात बसत नाही. कृपया तपशील थोडक्यात लिहा.'),{status:422});
   if(format==='png')return await page.locator(memorial?'.memorial-paper':'.biodata-paper').screenshot({type:'png',animations:'disabled',scale:'device'});
   return await page.pdf({format:'A4',printBackground:true,preferCSSPageSize:true,margin:{top:0,bottom:0,left:0,right:0}});
- }finally{active--;await context?.close();}
+ }finally{
+  // A Chromium context may crash while closing; always close its owning browser.
+  try{await context?.close();}catch{}
+  try{await instance?.close();}catch{}
+  if(instance)browsers.delete(instance);
+  active--;
+ }
 }
-async function close(){const pending=browserPromise;browserPromise=null;if(pending)await(await pending).close();}
+async function close(){await Promise.allSettled([...browsers].map(instance=>instance.close()));browsers.clear();}
 module.exports={makePDF,close};
 
