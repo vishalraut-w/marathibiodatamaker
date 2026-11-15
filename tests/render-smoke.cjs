@@ -17,6 +17,9 @@ if(process.platform==='win32'){
   const christian=P.demo();christian.templateId='christian-grace';christian.header='christian-jesus';christian.values.invocation='';
   const christianPdf=await pdf.makePDF(christian,true,'pdf');assert.equal(christianPdf.subarray(0,5).toString(),'%PDF-');
   const christianPng=await pdf.makePDF(christian,true,'png');assert.equal(christianPng.subarray(0,8).toString('hex'),'89504e470d0a1a0a');
+  const memorial=require('../memorial-data.js').demo();
+  const memorialPdf=await pdf.makePDF(memorial,true,'pdf');assert.equal(memorialPdf.subarray(0,5).toString(),'%PDF-');
+  const memorialPng=await pdf.makePDF(memorial,true,'png');assert.equal(memorialPng.subarray(0,8).toString('hex'),'89504e470d0a1a0a');
   console.log('PASS: serverless Chromium exports PDF and PNG using bundled fonts and assets.');
  })().catch(error=>{console.error(error);process.exitCode=1;}).finally(()=>pdf.close());
 }

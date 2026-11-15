@@ -2,6 +2,7 @@
 const http=require('node:http'),fsp=require('node:fs/promises'),path=require('node:path');
 const {randomBytes,createHash}=require('node:crypto');
 const P=require('../data.js'),payments=require('./payment.cjs'),pdf=require('./pdf.cjs');
+const Memorial=require('../memorial-data.js');
 const tokens=require('./tokens.cjs');
 const {normalizeOrigin,requestIsAllowed}=require('./origin.cjs');
 const ROOT=path.resolve(__dirname,'..'),HOST=process.env.HOST||'127.0.0.1',PORT=Number(process.env.PORT)||4173;
@@ -25,11 +26,17 @@ async function readBody(req){
  return Buffer.concat(chunks);
 }
 function draftFrom(body){
+ if(body.draft?.kind==='memorial'){
+  const d=Memorial.normalize(body.draft);
+  if(!d.rows.some(row=>row.value.trim()))throw fail('आधी तुमची माहिती भरा.',422);
+  return d;
+ }
  const d=P.normalize(body.draft);
  if(!Object.keys(P.sectionsFor(d)).some(s=>P.entries(d,s).length)&&!P.customSectionEntries(d).length)throw fail('आधी तुमची माहिती भरा.',422);
  return d;
 }
 function draftDigest(draft){
+ if(draft.kind==='memorial')return createHash('sha256').update(JSON.stringify(draft)).digest('hex');
  // Preserve tokens issued for older drafts that have no custom sections or label choice.
  const {labelOverrides,...withoutOverrides}=draft;
  const hasOverrides=Object.keys(labelOverrides||{}).length>0;
@@ -41,17 +48,23 @@ function exportFormat(body){const format=body.format??'pdf';if(!['pdf','png'].in
 function sendDocument(res,result,format){res.writeHead(200,{'Content-Type':format==='png'?'image/png':'application/pdf','Content-Disposition':'attachment; filename="parichay-patrika.'+format+'"'});res.end(result);}
 function paymentClaims(token,type){
  const claims=tokens.verify(token,type);
- const valid=typeof claims.orderId==='string'&&/^order_[A-Za-z0-9_]+$/.test(claims.orderId)&&claims.amount===payments.PRICE&&claims.currency===payments.CURRENCY&&typeof claims.draftDigest==='string'&&/^[a-f0-9]{64}$/.test(claims.draftDigest)&&(!claims.paymentId||typeof claims.paymentId==='string'&&/^pay_[A-Za-z0-9_]+$/.test(claims.paymentId));
+ // Honor previously signed ₹49 orders until they expire; new orders use the current price.
+ const valid=typeof claims.orderId==='string'&&/^order_[A-Za-z0-9_]+$/.test(claims.orderId)&&[payments.PRICE,4900].includes(claims.amount)&&claims.currency===payments.CURRENCY&&typeof claims.draftDigest==='string'&&/^[a-f0-9]{64}$/.test(claims.draftDigest)&&(!claims.paymentId||typeof claims.paymentId==='string'&&/^pay_[A-Za-z0-9_]+$/.test(claims.paymentId));
  if(!valid||type==='download'&&!claims.paymentId)throw fail(tokens.INVALID_TOKEN,403);
  return claims;
 }
-function issueDownloadToken(claims,payment){
- return tokens.issue('download',{orderId:claims.orderId,paymentId:payment.id,draftDigest:claims.draftDigest,amount:payments.PRICE,currency:payments.CURRENCY});
+function paymentSession(claims,payment){
+ // Razorpay's payment creation time is stable across verification retries.
+ const start=payment.created_at;
+ if(!Number.isSafeInteger(start)||start<=0||start>Math.floor(Date.now()/1000)+60)throw fail('पेमेंटची वेळ तपासता आली नाही. कृपया पुन्हा प्रयत्न करा.',502);
+ const expiresAt=(start*1000)+tokens.DOWNLOAD_TOKEN_TTL_MS;
+ if(Date.now()>=expiresAt)return {paid:true,expired:true,expiresAt};
+ return {paid:true,expired:false,expiresAt,downloadToken:tokens.issue('download',{orderId:claims.orderId,paymentId:payment.id,draftDigest:claims.draftDigest,amount:claims.amount,currency:payments.CURRENCY},{now:start*1000})};
 }
 async function capturedPaymentFor(claims,paymentId){
  if(typeof paymentId!=='string'||!/^pay_[A-Za-z0-9_]+$/.test(paymentId))return null;
  const payment=await payments.razorpay('payments/'+encodeURIComponent(paymentId));
- return payments.capturedPayment(payment,claims.orderId)?payment:null;
+ return payments.capturedPayment(payment,claims.orderId,claims.amount)?payment:null;
 }
 async function paymentStatus(claims){
  const result=await payments.razorpay('orders/'+encodeURIComponent(claims.orderId)+'/payments');
@@ -59,8 +72,8 @@ async function paymentStatus(claims){
  for(const id of ids){const payment=await capturedPaymentFor(claims,id);if(payment)return payment;}
  return null;
 }
-const MIME={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.ttf':'font/ttf','.png':'image/png','.txt':'text/plain; charset=utf-8'};
-const publicFiles=new Set(['index.html','templates.html','buddhist-templates.html','christian-templates.html','islamic-templates.html','builder.html','islamic-builder.html','preview.html','download.html','privacy.html','styles.css','paper.css','home.css','home.js','site-nav.js','transliterator.js','templates.css','app.js','data.js','renderer.js']);
+const MIME={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.ttf':'font/ttf','.png':'image/png','.txt':'text/plain; charset=utf-8','.xml':'application/xml; charset=utf-8'};
+const publicFiles=new Set(['index.html','templates.html','buddhist-templates.html','christian-templates.html','islamic-templates.html','builder.html','islamic-builder.html','preview.html','download.html','privacy.html','varshradh-templates.html','varshradh-builder.html','memorial.css','memorial-data.js','memorial-renderer.js','memorial-app.js','styles.css','paper.css','home.css','home.js','site-nav.js','transliterator.js','templates.css','app.js','data.js','renderer.js','analytics.js','robots.txt','sitemap.xml']);
 async function handler(req,res){
  res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','same-origin');
  res.setHeader('X-Frame-Options','DENY');
@@ -91,17 +104,15 @@ async function handler(req,res){
     if(body.razorpay_order_id!==claims.orderId||!payments.signatureIsValid(claims.orderId,body.razorpay_payment_id,body.razorpay_signature,process.env.RAZORPAY_KEY_SECRET))throw fail('पेमेंटची पडताळणी झाली नाही.',403);
     const payment=await capturedPaymentFor(claims,body.razorpay_payment_id);
     if(!payment)throw fail('पेमेंट अद्याप पूर्णपणे प्राप्त झालेले नाही. थोड्या वेळाने स्थिती तपासा.',409);
-    return json(res,200,{paid:true,downloadToken:issueDownloadToken(claims,payment)});
+    return json(res,200,paymentSession(claims,payment));
    }
    if(url.pathname==='/api/payment/status'){
     const claims=paymentClaims(body.orderToken,'order');
-    const matchesDraft=body.draft?draftDigest(draftFrom(body))===claims.draftDigest:false;
     const payment=await paymentStatus(claims);
-    return json(res,200,payment?{paid:true,matchesDraft,downloadToken:issueDownloadToken(claims,payment)}:{paid:false,matchesDraft});
+    return json(res,200,payment?paymentSession(claims,payment):{paid:false});
    }
    if(['/api/pdf/paid','/api/export/paid'].includes(url.pathname)){
     const format=exportFormat(body),claims=paymentClaims(body.downloadToken,'download'),draft=draftFrom(body);
-    if(draftDigest(draft)!==claims.draftDigest)throw fail('ही स्वच्छ प्रत याच पत्रिकेसाठी उपलब्ध आहे.',403);
     const payment=await capturedPaymentFor(claims,claims.paymentId);
     if(!payment)throw fail('पेमेंटची पडताळणी आवश्यक आहे.',409);
     return sendDocument(res,await pdf.makePDF(draft,false,format),format);

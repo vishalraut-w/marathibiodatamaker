@@ -3,9 +3,9 @@ const {signatureIsValid,capturedPayment}=require('../server/payment.cjs');
 const tokens=require('../server/tokens.cjs');
 const P=require('../data.js');
 test('only the expected order and exact captured INR amount can unlock',()=>{
- const good={id:'pay_one',order_id:'order_one',status:'captured',captured:true,amount:4900,currency:'INR',amount_refunded:0};
+ const good={id:'pay_one',order_id:'order_one',status:'captured',captured:true,amount:3500,currency:'INR',amount_refunded:0};
  assert.equal(capturedPayment(good,'order_one'),true);
- for(const patch of [{order_id:'order_other'},{amount:49},{amount:4901},{currency:'USD'},{captured:false},{status:'authorized'},{amount_refunded:4900}])assert.equal(capturedPayment({...good,...patch},'order_one'),false);
+ for(const patch of [{order_id:'order_other'},{amount:49},{amount:3501},{currency:'USD'},{captured:false},{status:'authorized'},{amount_refunded:3500}])assert.equal(capturedPayment({...good,...patch},'order_one'),false);
 });
 test('checkout signatures reject forged or changed payment identities',()=>{
  const secret='fixture-only-secret',sig=createHmac('sha256',secret).update('order_one|pay_one').digest('hex');
@@ -14,12 +14,12 @@ test('checkout signatures reject forged or changed payment identities',()=>{
  assert.equal(signatureIsValid('order_one','pay_other',sig,secret),false);
  assert.equal(signatureIsValid('order_one','pay_one','paid',secret),false);
 });
-test('signed stateless tokens bind a payment order to one draft and expire',()=>{
+test('signed order and download tokens reject tampering and expire',()=>{
  const secret='fixture-token-secret-that-is-at-least-32-characters',now=1_700_000_000_000;
- const claims={orderId:'order_one',draftDigest:'a'.repeat(64),amount:4900,currency:'INR'};
+ const claims={orderId:'order_one',draftDigest:'a'.repeat(64),amount:3500,currency:'INR'};
  const token=tokens.issue('order',claims,{secret,now});
  const verified=tokens.verify(token,'order',{secret,now:now+1});
- assert.equal(verified.orderId,claims.orderId);assert.equal(verified.draftDigest,claims.draftDigest);assert.equal(verified.amount,4900);assert.equal(verified.currency,'INR');
+ assert.equal(verified.orderId,claims.orderId);assert.equal(verified.draftDigest,claims.draftDigest);assert.equal(verified.amount,3500);assert.equal(verified.currency,'INR');
  assert.throws(()=>tokens.verify(token+'x','order',{secret,now}),error=>error.status===403);
  assert.throws(()=>tokens.verify(token,'download',{secret,now}),error=>error.status===403);
  assert.throws(()=>tokens.verify(token,'order',{secret,now:now+tokens.ORDER_TOKEN_TTL_MS}),error=>error.status===403);

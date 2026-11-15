@@ -2,7 +2,7 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
 const P=require('../data.js'),{handler}=require('../server/index.cjs');
 const root=path.resolve(__dirname,'..');
-const pages=['index.html','templates.html','buddhist-templates.html','christian-templates.html','islamic-templates.html','builder.html','islamic-builder.html','preview.html','download.html','privacy.html'];
+const pages=['index.html','templates.html','buddhist-templates.html','christian-templates.html','islamic-templates.html','builder.html','islamic-builder.html','preview.html','download.html','privacy.html','varshradh-templates.html','varshradh-builder.html'];
 async function get(url){
  const res={setHeader(){},writeHead(status){this.status=status;this.headersSent=true;},end(body){this.body=body;}};
  await handler({method:'GET',url,headers:{}},res);return res;

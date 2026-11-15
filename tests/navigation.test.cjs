@@ -5,7 +5,7 @@ function read(file){return fs.readFileSync(path.join(root,file),'utf8');}
 function headerNav(html){return html.match(/<header class="site-header">[\s\S]*?<\/header>/)?.[0].match(/<nav\b[\s\S]*?<\/nav>/)?.[0];}
 test('every page contains the homepage navigation and its needed assets',()=>{
  const nav=headerNav(read('index.html'));assert.ok(nav);assert.match(nav,/href="buddhist-templates\.html"/);
- for(const file of ['templates.html','buddhist-templates.html','christian-templates.html','islamic-templates.html','builder.html','islamic-builder.html','preview.html','download.html','privacy.html']){
+ for(const file of ['templates.html','buddhist-templates.html','christian-templates.html','islamic-templates.html','builder.html','islamic-builder.html','preview.html','download.html','privacy.html','varshradh-templates.html','varshradh-builder.html']){
   const html=read(file);assert.equal(headerNav(html),nav,file);assert.match(html,/href="home\.css"/,file);assert.match(html,/src="site-nav\.js"/,file);
  }
 });

@@ -80,12 +80,12 @@ const origin=process.env.TEST_ORIGIN||'http://127.0.0.1:4173',out=path.join(__di
    const dimensions=await page.evaluate(()=>({scroll:document.documentElement.scrollWidth,width:innerWidth}));assert.ok(dimensions.scroll<=dimensions.width+1,route+' horizontal overflow');
    if(route==='preview.html')await page.screenshot({path:path.join(out,'mobile-preview.png'),fullPage:true});
    if(route==='builder.html')await page.screenshot({path:path.join(out,'mobile-builder.png'),fullPage:true});
-   if(route!=='download.html'){const text=await page.locator('body').innerText();assert.doesNotMatch(text,/₹49|मोफत|पेमेंट|वॉटरमार्कशिवाय/);}
+   if(route!=='download.html'){const text=await page.locator('body').innerText();assert.doesNotMatch(text,/₹35|मोफत|पेमेंट|वॉटरमार्कशिवाय/);}
   }
   await page.goto(origin+'/download.html');await page.locator('#download-status').filter({hasText:'वॉटरमार्कशिवाय डाउनलोड सध्या उपलब्ध नाही'}).waitFor();
   assert.equal(await page.locator('#paid-download').isDisabled(),true);
   assert.match(await page.locator('#paid-download').innerText(),/Razorpay सुरक्षित पेमेंट/);
-  assert.match(await page.locator('#paid-download').innerText(),/₹49 भरून अनलॉक करा/);
+  assert.match(await page.locator('#paid-download').innerText(),/₹35 भरून अनलॉक करा/);
   await page.locator('input[name="export-format"][value="png"]').check();
   assert.match(await page.locator('#free-download').innerText(),/PNG/);
   const pngDownload=page.waitForEvent('download');await page.locator('#free-download').click();

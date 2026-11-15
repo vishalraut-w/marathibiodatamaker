@@ -3,7 +3,7 @@
 const P=Patrika,R=PatrikaRender,E=P.esc,$=s=>document.querySelector(s);
 const page=document.body.dataset.page;
 const isIslamic=document.body.dataset.profile==='islamic'||document.body.dataset.religion==='islamic'||((page==='preview'||page==='download')&&/(?:\?|&)profile=islamic(?:&|$)/.test(typeof location==='undefined'?'':location.search||''));
-const storageKey=isIslamic?'mpm-islamic-v1':'mpm-fresh-v1',paymentStorageKey=isIslamic?'mpm-islamic-order':'mpm-order';
+const storageKey=isIslamic?'mpm-islamic-v1':'mpm-fresh-v1',paymentStorageKey='mpm-payment-session';
 let draft;
 try{const saved=JSON.parse(localStorage.getItem(storageKey));draft=saved?P.normalize(saved):P.fresh(isIslamic?'islamic':undefined);}catch{draft=P.fresh(isIslamic?'islamic':undefined);}
 if(isIslamic&&(page==='preview'||page==='download')){
@@ -233,7 +233,7 @@ async function api(path,body){
  const response=await fetch(path,{method:body?'POST':'GET',headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined});
  if(!response.ok){const error=await response.json().catch(()=>({}));throw Object.assign(Error(error.message||'प्रक्रिया पूर्ण झाली नाही. कृपया पुन्हा प्रयत्न करा.'),{status:response.status});}return response;
 }
-let config=null,activeOrder=null,downloadToken=null,downloadReady=false,downloadBusy=false,paidOrderReady=false;
+let config=null,activeOrder=null,downloadToken=null,downloadReady=false,downloadBusy=false,paidOrderReady=false,sessionExpiresAt=0,sessionTimer;
 function selectedFormat(){return $('input[name="export-format"]:checked')?.value==='png'?'png':'pdf';}
 function setDownloadStatus(text){$('#download-status').textContent=text;}
 function updateDownloadLabels(){
@@ -243,7 +243,7 @@ function updateDownloadLabels(){
  if(paidOrderReady){
   paid.classList.remove('razorpay-pay');paid.textContent='अनलॉक केलेली '+label+' डाउनलोड ↓';paid.setAttribute('aria-label','अनलॉक केलेली '+label+' डाउनलोड करा');
  }else{
-  paid.classList.add('razorpay-pay');paid.innerHTML='<span class="razorpay-copy"><small>Razorpay सुरक्षित पेमेंट</small><b>₹49 भरून अनलॉक करा</b></span><span class="razorpay-arrow" aria-hidden="true">→</span>';paid.setAttribute('aria-label','Razorpay ने 49 रुपये भरून पत्रिका अनलॉक करा');
+  paid.classList.add('razorpay-pay');paid.innerHTML='<span class="razorpay-copy"><small>Razorpay सुरक्षित पेमेंट</small><b>₹35 भरून अनलॉक करा</b></span><span class="razorpay-arrow" aria-hidden="true">→</span>';paid.setAttribute('aria-label','Razorpay ने 35 रुपये भरून पत्रिका अनलॉक करा');
  }
 }
 function busy(value){
@@ -258,17 +258,35 @@ async function saveDocument(response,format){
  downloadBlob(await response.blob(),'parichay-patrika.'+format);
  setDownloadStatus('✓ तुमची '+format.toUpperCase()+' परिचय पत्रिका डाउनलोड झाली.');
 }
+function clearPaymentSession(){
+ activeOrder=null;downloadToken=null;paidOrderReady=false;sessionExpiresAt=0;clearInterval(sessionTimer);$('#session-time').textContent='';
+ try{sessionStorage.removeItem(paymentStorageKey);}catch{}
+ $('#retry-paid').hidden=true;updateDownloadLabels();
+}
+function showSessionTime(){
+ const remaining=Math.max(0,Math.ceil((sessionExpiresAt-Date.now())/1000));
+ if(!remaining){clearPaymentSession();setDownloadStatus('१५ मिनिटांचा वेळ संपला आहे. वॉटरमार्कशिवाय डाउनलोडसाठी पुन्हा पेमेंट करा.');return;}
+ const minutes=Math.floor(remaining/60),seconds=String(remaining%60).padStart(2,'0');
+ $('#session-time').textContent='अनलॉक वेळ शिल्लक: '+minutes+':'+seconds;
+}
+function usePaymentSession(result){
+ if(result.expired){clearPaymentSession();setDownloadStatus('१५ मिनिटांचा वेळ संपला आहे. वॉटरमार्कशिवाय डाउनलोडसाठी पुन्हा पेमेंट करा.');return;}
+ downloadToken=typeof result.downloadToken==='string'?result.downloadToken:null;
+ paidOrderReady=!!result.paid&&!!downloadToken;
+ if(paidOrderReady){sessionExpiresAt=result.expiresAt;clearInterval(sessionTimer);showSessionTime();sessionTimer=setInterval(showSessionTime,1000);}
+ updateDownloadLabels();
+}
 async function paidStatus(){
+ if(!activeOrder?.orderToken)return {paid:false};
  let result;
- if(!activeOrder?.orderToken)return {paid:false,matchesDraft:false};
- try{result=await(await api('/api/payment/status',{orderToken:activeOrder.orderToken,draft})).json();}
- catch(error){if(error.status!==403&&error.status!==404)throw error;activeOrder=null;downloadToken=null;paidOrderReady=false;try{sessionStorage.removeItem(paymentStorageKey);}catch{}$('#retry-paid').hidden=true;updateDownloadLabels();return {paid:false,matchesDraft:false};}
- downloadToken=typeof result.downloadToken==='string'?result.downloadToken:null;paidOrderReady=!!result.paid&&!!result.matchesDraft&&!!downloadToken;updateDownloadLabels();return result;
+ try{result=await(await api('/api/payment/status',{orderToken:activeOrder.orderToken})).json();}
+ catch(error){if(error.status!==403&&error.status!==404)throw error;clearPaymentSession();return {paid:false};}
+ usePaymentSession(result);return result;
 }
 async function downloadPaid(format){if(!downloadToken)throw Error('पेमेंटची सुरक्षित परवानगी उपलब्ध नाही. स्थिती पुन्हा तपासा.');await saveDocument(await api('/api/export/paid',{downloadToken,draft,format}),format);}
 async function recoverPayment(){
  if(!activeOrder||downloadBusy)return;const format=selectedFormat();busy(true);
- try{const result=await paidStatus();if(result.paid&&result.matchesDraft)await downloadPaid(format);else if(result.paid)setDownloadStatus('पेमेंट झाले आहे, पण पत्रिका बदलली आहे. आधीचा मसुदा परत आणा किंवा नवीन पत्रिका अनलॉक करा.');else setDownloadStatus('पेमेंट अद्याप पूर्ण झालेले नाही. थोड्या वेळाने पुन्हा तपासा.');}
+ try{const result=await paidStatus();if(result.paid&&!result.expired)await downloadPaid(format);else if(!result.expired)setDownloadStatus('पेमेंट अद्याप पूर्ण झालेले नाही. थोड्या वेळाने पुन्हा तपासा.');}
  catch(error){setDownloadStatus(error.message);}finally{busy(false);}
 }
 if(page==='download'){
@@ -291,7 +309,7 @@ if(page==='download'){
  $('#paid-download').addEventListener('click',async()=>{
   if(!config?.paymentsEnabled||downloadBusy)return;const format=selectedFormat();busy(true);setDownloadStatus('पेमेंटची स्थिती तपासत आहोत…');
   try{
-   if(activeOrder){const result=await paidStatus();if(result.paid&&result.matchesDraft){await downloadPaid(format);busy(false);return;}}
+   if(activeOrder){const result=await paidStatus();if(result.paid&&!result.expired){await downloadPaid(format);busy(false);return;}}
    setDownloadStatus('सुरक्षित पेमेंट सुरू होत आहे…');
    const order=await(await api('/api/payment/order',{draft})).json();
    if(typeof order.id!=='string'||typeof order.orderToken!=='string')throw Error('पेमेंटची ऑर्डर सुरक्षितपणे तयार झाली नाही. कृपया पुन्हा प्रयत्न करा.');
@@ -300,7 +318,7 @@ if(page==='download'){
    if(!window.Razorpay)await new Promise((resolve,reject)=>{const script=document.createElement('script');script.src='https://checkout.razorpay.com/v1/checkout.js';script.onload=resolve;script.onerror=()=>reject(Error('पेमेंट सेवा उघडली नाही. कृपया पुन्हा प्रयत्न करा.'));document.head.append(script);});
    const checkout=new Razorpay({key:config.keyId,order_id:order.id,amount:order.amount,currency:order.currency,name:'MarathiPatrikaMakers',description:'परिचय पत्रिका · वॉटरमार्कशिवाय PNG आणि PDF',theme:{color:'#912c49'},handler:async result=>{
     busy(true);setDownloadStatus('पेमेंटची पडताळणी होत आहे…');
-    try{const verified=await(await api('/api/payment/verify',{...result,orderToken:activeOrder.orderToken})).json();downloadToken=verified.downloadToken;paidOrderReady=!!downloadToken;await downloadPaid(format);}
+    try{const verified=await(await api('/api/payment/verify',{...result,orderToken:activeOrder.orderToken})).json();usePaymentSession(verified);if(!verified.expired)await downloadPaid(format);}
     catch(error){setDownloadStatus(error.message+' आधीच्या पेमेंटची स्थिती तपासा.');}finally{busy(false);}
    },modal:{ondismiss:()=>{setDownloadStatus('पेमेंट बंद केले. पूर्ण झाले असल्यास स्थिती तपासा.');busy(false);}}});
    checkout.on('payment.failed',()=>{setDownloadStatus('पेमेंट पूर्ण झाले नाही. कृपया पुन्हा प्रयत्न करा.');busy(false);});checkout.open();

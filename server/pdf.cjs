@@ -32,16 +32,18 @@ async function makePDF(draft,watermark,format='pdf'){
    const data=await fs.readFile(path.join(root,url.pathname));
    return route.fulfill({body:data,contentType:url.pathname.endsWith('.ttf')?'font/ttf':url.pathname.endsWith('.png')?'image/png':'image/svg+xml'});
   });
-  const css=await fs.readFile(path.join(root,'paper.css'),'utf8');
+  const memorial=draft.kind==='memorial';
+  const css=await fs.readFile(path.join(root,memorial?'memorial.css':'paper.css'),'utf8');
   await page.setContent('<!doctype html><html lang="mr"><head><meta charset="utf-8"><title>परिचय पत्रिका · MarathiPatrikaMakers</title><base href="http://render.local/"><style>body{margin:0}'+css+'</style></head><body></body></html>');
-  await page.addScriptTag({content:await fs.readFile(path.join(root,'data.js'),'utf8')});
-  await page.addScriptTag({content:await fs.readFile(path.join(root,'renderer.js'),'utf8')});
-  const fit=await page.evaluate(async ({draft,watermark})=>{
-   const sheet=PatrikaRender.createSheet(draft,{watermark});document.body.append(sheet);const result=await PatrikaRender.readySheet(sheet);return {...result,imageError:[...sheet.querySelectorAll('img')].some(i=>!i.naturalWidth)};
-  },{draft,watermark});
+  await page.addScriptTag({content:await fs.readFile(path.join(root,memorial?'memorial-data.js':'data.js'),'utf8')});
+  await page.addScriptTag({content:await fs.readFile(path.join(root,memorial?'memorial-renderer.js':'renderer.js'),'utf8')});
+  const fit=await page.evaluate(async ({draft,watermark,memorial})=>{
+   const renderer=memorial?MemorialRender:PatrikaRender;
+   const sheet=renderer.createSheet(draft,{watermark});document.body.append(sheet);const result=await renderer.readySheet(sheet);return {...result,imageError:[...sheet.querySelectorAll('img')].some(i=>!i.naturalWidth)};
+  },{draft,watermark,memorial});
   if(fit.imageError)throw Object.assign(Error('चित्र उघडता आले नाही. कृपया चित्र पुन्हा निवडा.'),{status:422});
   if(!fit.fits)throw Object.assign(Error('माहिती एका पानात बसत नाही. कृपया तपशील थोडक्यात लिहा.'),{status:422});
-  if(format==='png')return await page.locator('.biodata-paper').screenshot({type:'png',animations:'disabled',scale:'device'});
+  if(format==='png')return await page.locator(memorial?'.memorial-paper':'.biodata-paper').screenshot({type:'png',animations:'disabled',scale:'device'});
   return await page.pdf({format:'A4',printBackground:true,preferCSSPageSize:true,margin:{top:0,bottom:0,left:0,right:0}});
  }finally{active--;await context?.close();}
 }

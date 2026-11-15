@@ -1,8 +1,8 @@
 'use strict';
 const {createHmac,randomBytes,timingSafeEqual}=require('node:crypto');
 
-const ORDER_TOKEN_TTL_MS=15*60*1000;
-const DOWNLOAD_TOKEN_TTL_MS=30*60*1000;
+const ORDER_TOKEN_TTL_MS=60*60*1000;
+const DOWNLOAD_TOKEN_TTL_MS=15*60*1000;
 const INVALID_TOKEN='पेमेंटचा सुरक्षित दुवा कालबाह्य झाला आहे. कृपया पुन्हा पेमेंट सुरू करा.';
 
 function fail(message,status=403){return Object.assign(Error(message),{status});}

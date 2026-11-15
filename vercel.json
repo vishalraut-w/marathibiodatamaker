@@ -5,7 +5,7 @@
   "functions": {
     "api/index.js": {
       "maxDuration": 60,
-      "includeFiles": "{assets/**,paper.css,data.js,renderer.js,node_modules/@sparticuz/chromium/bin/**}"
+      "includeFiles": "{assets/**,paper.css,data.js,renderer.js,memorial.css,memorial-data.js,memorial-renderer.js,node_modules/@sparticuz/chromium/bin/**}"
     }
   },
   "rewrites": [{ "source": "/api/:path*", "destination": "/api/index" }],

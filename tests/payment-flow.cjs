@@ -4,13 +4,14 @@ const assert=require('node:assert/strict'),{createHmac}=require('node:crypto'),P
 process.env.VERCEL='1';process.env.APP_ORIGIN='https://patrika.example';process.env.NODE_ENV='test';process.env.PORT='4197';process.env.PAYMENTS_ENABLED='true';process.env.RAZORPAY_KEY_ID='rzp_test_fixture';
 process.env.RAZORPAY_KEY_SECRET='fixture_secret';process.env.PAYMENT_TOKEN_SECRET='fixture_payment_token_secret_at_least_32_characters';
 const gateway=require('../server/payment.cjs'),pdf=require('../server/pdf.cjs');
-let paid=false,amount=4900,rendered=null,refunded=0;
+let paid=false,amount=3500,rendered=null,refunded=0;
+const paymentCreatedAt=Math.floor(Date.now()/1000);
 gateway.razorpay=gateway.createGateway({
  orders:{
-  async create(body){assert.equal(body.amount,4900);assert.equal(body.currency,'INR');return {id:'order_fixture',amount:4900,currency:'INR'};},
+  async create(body){assert.equal(body.amount,3500);assert.equal(body.currency,'INR');return {id:'order_fixture',amount:3500,currency:'INR'};},
   async fetchPayments(id){assert.equal(id,'order_fixture');return {items:[{id:'pay_fixture',order_id:id,status:paid?'captured':'authorized',captured:paid,amount,currency:'INR',amount_refunded:refunded}]};}
  },
- payments:{async fetch(id){assert.equal(id,'pay_fixture');return {id,order_id:'order_fixture',status:paid?'captured':'authorized',captured:paid,amount,currency:'INR',amount_refunded:refunded};}}
+ payments:{async fetch(id){assert.equal(id,'pay_fixture');return {id,order_id:'order_fixture',status:paid?'captured':'authorized',captured:paid,amount,currency:'INR',amount_refunded:refunded,created_at:paymentCreatedAt};}}
 });
 pdf.makePDF=async(draft,watermark,format='pdf')=>{rendered={draft,watermark,format};return Buffer.from(format==='png'?'PNG fixture':'%PDF fixture');};
 const {handler}=require('../server/index.cjs');
@@ -42,7 +43,7 @@ async function request(url,options={}){
  const d=P.demo();
  let response=await post('/api/payment/order',{draft:d,amount:1});
  assert.equal(response.status,200);const order=await response.json();
- assert.equal(order.amount,4900);assert.equal(typeof order.orderToken,'string');
+ assert.equal(order.amount,3500);assert.equal(typeof order.orderToken,'string');
  assert.equal(rendered.watermark,true,'order is layout-validated before requesting payment');
  response=await post('/api/pdf/paid',{downloadToken:'forged',draft:d});assert.equal(response.status,403);
  response=await post('/api/export/paid',{downloadToken:'forged',draft:d,format:'png'});assert.equal(response.status,403);
@@ -51,23 +52,41 @@ async function request(url,options={}){
  response=await post('/api/payment/verify',{...verification,razorpay_order_id:'order_other'});assert.equal(response.status,403);
  response=await post('/api/payment/verify',verification);assert.equal(response.status,409);
  paid=true;amount=1;response=await post('/api/payment/verify',verification);assert.equal(response.status,409);
- amount=4900;response=await post('/api/payment/verify',verification);assert.equal(response.status,200);const verified=await response.json();
+ amount=3500;response=await post('/api/payment/verify',verification);assert.equal(response.status,200);const verified=await response.json();
  assert.equal(verified.paid,true);assert.equal(typeof verified.downloadToken,'string');
  response=await post('/api/pdf/paid',{downloadToken:verified.downloadToken+'x',draft:d});assert.equal(response.status,403,'tampered download token is rejected');
- response=await post('/api/pdf/paid',{downloadToken:verified.downloadToken,draft:{...d,values:{...d.values,fullName:'Tampered'}}});assert.equal(response.status,403,'a clean download cannot use another draft');
+ response=await post('/api/pdf/paid',{downloadToken:verified.downloadToken,draft:{...d,values:{...d.values,fullName:'Tampered'}}});assert.equal(response.status,200,'an active session accepts edited details');assert.equal(rendered.draft.values.fullName,'Tampered');
  response=await post('/api/pdf/paid',{downloadToken:verified.downloadToken,draft:d});assert.equal(response.status,200);
  assert.equal(rendered.watermark,false);assert.equal(rendered.draft.values.fullName,d.values.fullName);
  response=await post('/api/payment/status',{orderToken:order.orderToken,draft:d});let status=await response.json();
- assert.equal(status.paid,true);assert.equal(status.matchesDraft,true);assert.equal(typeof status.downloadToken,'string');
+ assert.equal(status.paid,true);assert.equal(status.expired,false);assert.equal(status.expiresAt,verified.expiresAt);assert.equal(typeof status.downloadToken,'string');
  response=await post('/api/payment/status',{orderToken:order.orderToken,draft:{...d,values:{...d.values,fullName:'Changed'}}});status=await response.json();
- assert.equal(status.paid,true);assert.equal(status.matchesDraft,false);
+ assert.equal(status.paid,true);assert.equal(status.expiresAt,verified.expiresAt,'status checks cannot extend the session');
+ const changedTemplate={...d,templateId:P.templates.find(t=>t.id!==d.templateId).id};
+ response=await post('/api/export/paid',{downloadToken:status.downloadToken,draft:changedTemplate});assert.equal(response.status,200,'the same purchase accepts a different template');
+ const islamic=P.fresh('islamic');islamic.values.fullName='Changed';
+ response=await post('/api/export/paid',{downloadToken:status.downloadToken,format:'png',draft:islamic});assert.equal(response.status,200,'the same purchase accepts another builder profile');
+ const memorial=require('../memorial-data.js').demo();memorial.rows.reverse();
+ response=await post('/api/export/free',{draft:memorial,format:'png'});assert.equal(response.status,200);assert.equal(rendered.watermark,true);assert.equal(rendered.draft.rows[0].type,'message');
+ response=await post('/api/payment/order',{draft:memorial});assert.equal(response.status,200,'memorial invitations can create the same ₹35 order');
+ response=await post('/api/export/paid',{downloadToken:status.downloadToken,format:'png',draft:memorial});assert.equal(response.status,200,'a paid session also unlocks memorial invitations');assert.equal(rendered.watermark,false);assert.equal(rendered.draft.kind,'memorial');
  response=await post('/api/export/paid',{downloadToken:verified.downloadToken,format:'png',draft:d});assert.equal(response.status,200);assert.equal(response.headers.get('content-type'),'image/png');assert.match(response.headers.get('content-disposition'),/\.png/);assert.equal(rendered.format,'png');assert.equal(rendered.watermark,false);assert.equal(rendered.draft.values.fullName,d.values.fullName);
  response=await post('/api/export/paid',{downloadToken:verified.downloadToken,format:'pdf',draft:d});assert.equal(response.status,200);assert.equal(rendered.format,'pdf');assert.equal(rendered.watermark,false);
  response=await post('/api/payment/webhook',{});assert.equal(response.status,404,'webhooks are not used in the stateless flow');
  refunded=1;response=await post('/api/pdf/paid',{downloadToken:verified.downloadToken,draft:d});assert.equal(response.status,409,'even partial refunds block clean downloads');
  refunded=0;paid=false;response=await post('/api/export/paid',{downloadToken:verified.downloadToken,format:'png',draft:d});assert.equal(response.status,409);
+ paid=true;amount=4900;
+ const oldOrder=tokens.issue('order',{orderId:'order_fixture',draftDigest:'a'.repeat(64),amount:4900,currency:'INR'});
+ response=await post('/api/payment/status',{orderToken:oldOrder});const oldStatus=await response.json();assert.equal(oldStatus.paid,true);assert.equal(oldStatus.expired,false,'existing ₹49 purchases remain usable until expiry');
+ response=await post('/api/export/paid',{downloadToken:oldStatus.downloadToken,draft:d});assert.equal(response.status,200,'an existing ₹49 purchase can still download');
+ amount=3500;const actualNow=Date.now;Date.now=()=>verified.expiresAt-1000;
+ response=await post('/api/payment/status',{orderToken:order.orderToken});status=await response.json();assert.equal(status.expired,false);assert.equal(status.expiresAt,verified.expiresAt,'a late recovery keeps the original deadline');
+ Date.now=()=>verified.expiresAt;
+ response=await post('/api/payment/status',{orderToken:order.orderToken});status=await response.json();assert.equal(status.expired,true);assert.equal(status.downloadToken,undefined,'recovery cannot renew an expired payment');
+ response=await post('/api/payment/verify',verification);assert.equal((await response.json()).expired,true,'re-verifying cannot renew an expired payment');
+ response=await post('/api/export/paid',{downloadToken:verified.downloadToken,draft:d});assert.equal(response.status,403,'the server rejects exports at the 15-minute boundary');Date.now=actualNow;
  const claims=tokens.verify(order.orderToken,'order');
  const expired=tokens.issue('order',{orderId:claims.orderId,draftDigest:claims.draftDigest,amount:claims.amount,currency:claims.currency},{now:Date.now()-tokens.ORDER_TOKEN_TTL_MS-1000});
  response=await post('/api/payment/status',{orderToken:expired,draft:d});assert.equal(response.status,403,'expired order tokens cannot authorize recovery');
- console.log('PASS: stateless signed tokens bind captured ₹49 Razorpay payments to one draft, with no database, webhook, or session storage.');
+ console.log('PASS: captured ₹35 payments unlock edited drafts and templates for a fixed 15-minute session.');
 })().catch(error=>{console.error(error);process.exitCode=1;});

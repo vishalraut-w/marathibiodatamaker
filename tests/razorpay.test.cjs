@@ -11,7 +11,7 @@ test('SDK adapter creates orders and fetches payments for checkout recovery',asy
   },
   payments:{async fetch(id){calls.push(['fetch',id]);return {id,status:'captured'};}}
  });
- const order={amount:4900,currency:'INR',partial_payment:false};
+ const order={amount:3500,currency:'INR',partial_payment:false};
  assert.deepEqual(await gateway('orders','POST',order),{id:'order_test',...order});
  assert.equal((await gateway('payments/pay_test')).status,'captured');
  assert.equal((await gateway('orders/order_test/payments')).items[0].id,'pay_test');
